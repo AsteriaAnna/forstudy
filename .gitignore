@@ -1,0 +1,22 @@
+# Data files
+data/
+results/
+phm2010_raw/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.trae/
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
