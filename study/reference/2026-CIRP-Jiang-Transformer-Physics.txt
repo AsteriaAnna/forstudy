@@ -1,0 +1,3826 @@
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Contents lists available at ScienceDirect
+
+CIRP Journal of Manufacturing Science and Technology
+journal homepage: www.elsevier.com/locate/cirpj
+
+Physics-based feature enhancement method and physics constraint
+Transformer model for multi-step tool wear and RUL prediction
+Shanglei Jiang a , Haoyuan Zhang a , Zhengmao Chen a, Yuwen Sun b,* , Xuexia Liu a,*
+a
+b
+
+School of Mechanical Engineering, Dalian Jiaotong University, Dalian 116028, China
+School of Mechanical Engineering, Dalian University of Technology, Dalian 116024, China
+
+A R T I C L E I N F O
+
+A B S T R A C T
+
+Keywords:
+Tool wear prediction
+RUL prediction
+Feature enhancement
+Physics constraints
+Multi-step prediction
+
+In intelligent manufacturing, tool wear monitoring (TWM) and remaining useful life (RUL) prediction are crucial
+for improving production quality and efficiency. However, achieving accurate and reliable multi-step (long-term)
+predictions remains a substantial challenge. This research proposes a feature enhancement method and con­
+structs a Transformer model that embeds hard-soft physics constraints for multi-step wear and RUL prediction.
+Firstly, the fast adaptive Brownian bridge aggregation algorithm (fABBA) is employed to extract the features
+from multiscale signals during machining, alleviating the reliance on domain knowledge inherent in traditional
+feature engineering to some extent. On this basis, a physics-based feature enhancement method is proposed to
+improve the model’s generalization. Secondly, a Transformer model based on multi-head self-attention and crossattention mechanisms is constructed for multi-step tool wear and RUL prediction. Meanwhile, a hard-soft
+physical constraint embedding module is designed to ensure that the model's output has a certain degree of
+physical interpretability. Finally, the PHM2010 and self-constructed datasets are employed to verify the effec­
+tiveness of the proposed method. Shapley Additive Explanations (SHAP) analysis method is used to quantita­
+tively analyze the contribution of features to the model. The wear comparison experiments on the PHM2010
+dataset, using C6 as the test set, show that the proposed model achieves RMSE values of 1.680672 ± 0.137001,
+2.220760 ± 0.145516, 3.430798 ± 0.485509, and 5.106184 ± 0.690110 for 12, 24, 36 and 48 step predictions,
+respectively. Even for the ultra-long wear prediction, the R2 remains at 0.981760 ± 0.005227, which is better
+than GRU, BiGRU, BiGRU-AT, and TCN models.
+
+1. Introduction
+
+tools, but also helps to establish an active maintenance mechanism,
+thereby improving machining efficiency and quality.
+The current prediction models for tool wear and RUL can be classi­
+fied into physical models, data-driven models, and physics-data fusion
+models [9]. Physics-based models estimate tool wear by establishing
+mathematical relationships between wear progression and observable
+physical quantities. Researchers have conducted a large number of
+preliminary studies, such as the classical Taylor equation [10], the
+Archard wear model [11], and the Usui wear model [12]. On this basis,
+researchers have further expanded these models to adapt them to
+diverse machining conditions. For example, the Taylor equation has
+been extended to incorporate the effects of temperature [13], cutting
+parameters [14], and tool geometry parameters [15]. Similarly, a
+modified Archard model based on deformation energy has been devel­
+oped to describe complex wear mechanisms [16]. Additionally,
+extended models incorporating specific workpiece material properties,
+
+With the rapid development of manufacturing technology, particu­
+larly the rising demand for precision components, existing machining
+methods pose unprecedented challenges to the stable operational effi­
+ciency and reliability of precision computer numerical control (CNC)
+machine tools. During the machining process, due to the synergistic
+effects of thermal loads, friction and others [1–3], tool wear is inevi­
+table. Under the cumulative influence, the cutting tools are prone to
+failure. According to statistics, cutting tool failures and workpiece
+damage caused by severe tool wear account for 20 % of the total
+downtime of machine tools [4,5]. In addition, tool failures due to wear
+also reduce overall equipment effectiveness, deteriorate workpiece
+surface roughness, and cause dimensional accuracy deviations [6–8].
+Therefore, the prediction of tool wear and RUL is particularly important.
+It not only provides effective early warnings for the progressive failure of
+* Corresponding authors.
+E-mail addresses: ywsun@dlut.edu.cn (Y. Sun), xuexiamail@163.com (X. Liu).
+
+https://doi.org/10.1016/j.cirpj.2026.01.001
+Received 12 September 2025; Received in revised form 3 December 2025; Accepted 8 January 2026
+Available online 14 January 2026
+1755-5817/© 2026 CIRP.
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+of cutting parameters. Additionally, physics-informed model architec­
+ture design [42] and residual modeling [43] also provide a way to
+physics-data fusion. It is worth noting that the residual structure
+essentially learns the deviation between the physical model and the
+actual values, and uses this deviation to correct the prediction results. It
+is unable to introduce the corresponding strict physical constraints.
+Recently, researchers have proposed novel approaches integrating
+physics and data, and have achieved remarkable results. For instance,
+for toolpaths with continuously varying radial immersions or feed rates,
+Liu et al [44]. propose an in-process force coefficients monitoring
+method. Furthermore, the edge force coefficients have been proven to be
+effective in estimating the tool’s flank wear. Pashmforoush et al [45].
+introduced a physics-informed ML method for TWM. By combining
+thermomechanical models with ML techniques, this approach mitigates
+the limitation of traditional methods that rely heavily on extensive
+experimental data. In another study by the authors [46], they developed
+a sequence-based physical-guided machine learning (PIML) model.
+Specifically, this model predicts tool wear based on cutting forces,
+machining parameters, and tool geometry. Experimental results
+demonstrate a prediction accuracy of 94 % on unseen test data. To
+address the heavy data demand of data-driven models and the limited
+ability of simplified physics-based models to capture the real complexity
+of machining processes, Sun et al [47]. proposed a hybrid-driven GPR
+model for TWM. Specifically, a health index based on feature adapt­
+ability analysis and Gaussian-weighted moving average filtering was
+constructed. A novel explicit physical model for tool wear is developed.
+By utilizing the health index and physical model to constrain the mean
+function of GPR, higher prediction accuracy is achieved. Compared to
+purely data-driven models, physics-informed GPR significantly en­
+hances prediction smoothness and reliability, reducing the width of the
+95 % confidence interval and variance by 46.44 % and 60.80 %,
+respectively.
+TWM provides decision support for tool replacement through realtime wear condition monitoring. However, this approach primarily re­
+flects instantaneous states and cannot capture the evolution of tool wear.
+In contrast, multi-step prediction methods for tool wear and RUL holds
+greater significance [48]. Utilizing limited historical data, these
+methods predict wear and RUL values over multiple future time steps.
+This capability facilitates the scheduling of optimal tool replacement
+windows, thereby establishing an active maintenance alert mechanism.
+Consequently, multi-step prediction methods not only enhance tool
+utilization efficiency and reduce production costs, but also effectively
+mitigate the risk of unplanned downtime.
+Multi-step prediction method has attracted widespread attention
+from researchers. Recently, researchers have explored the combination
+of feature selection strategies with prediction models to achieve multistep wear prediction. For example, Sun et al [49]. selected the fea­
+tures strongly related to the tool degradation process based on mono­
+tonicity metrics. Furthermore, a stacked bidirectional long short-term
+memory with attention mechanism (AT-SBiLSTM) model was con­
+structed to realize multi-step prediction. Xue et al [50]. introduced a
+dual-index scheme based on Spearman's correlation coefficient and
+mutual information index. On this basis, a hybrid model of multi-scale
+time convolution network - stacked bidirectional gated recurrent units
+- multi-head attention (MSTCN-SBiGRU-MHA) was constructed. The
+results showed that the R2 of the model exceeded 0.86 at steps 1, 5 and
+10.
+Based on the above, multi-step prediction has achieved significant
+progress. However, it still faces some challenges that need to be further
+addressed. The main points are as follows:
+
+machining methods, and application scenarios have been widely applied
+in tool wear and RUL prediction [17–19]. In recent years, Bai et al [20].
+developed a semi-analytical model to predict the evolution of tool wear
+during drilling of carbon fiber–reinforced polymer (CFRP). This model
+can also predict the average half axis lengths based on the wear rate and
+wear geometry. Seeholzer et al [21]. proposed an analytical model to
+effectively predict the evolution of tool micro-geometry wear. Further­
+more, this model is able to reproduce key wear characteristics, such as
+cutting-edge rounding, clearance angle decreasing and flank contact
+length increasing. These dynamically reproduced characteristics further
+facilitate the optimal design of cutting tools and the selection of
+machining parameters. With the widespread application of sensors, the
+combination of physical models and signal processing techniques has
+provided a new approach for tool condition monitoring. Zhang et al
+[22]. established a milling force model considering tool runout and
+wear. On this basis, they proposed a wear monitoring method based on
+seven-channel specific cutting force coefficient features, in which mill­
+ing forces, spindle vibrations, and currents are adopted as monitoring
+signal sources. Long-time milling experiments demonstrated that this
+method can effectively evaluate the tool condition.
+In addition, data-driven models leverage the powerful capabilities of
+machine learning (ML) and deep learning (DL) methods to establish
+high-dimensional mapping relationships between machining signals and
+wear states, thereby achieving more accurate predictions of tool wear
+and RUL [23–25]. Further research has shown that multi-source sensors
+can provide more comprehensive information about tool degradation
+processes, which is beneficial for enhancing the predictive ability of
+data-driven models [26,27]. The data-driven model prediction for tool
+wear and RUL can be divided into the following steps: data acquisition
+and preprocessing, feature engineering, model training and prediction
+[28–31]. Effective feature engineering is crucial for the prediction per­
+formance of data-driven models. This is due to the large scale of the
+obtained data. Statistical features need to be extracted from the original
+signals through time domain, frequency domain and time-frequency
+domain analysis [32].
+Although data-driven models have been widely applied and have
+demonstrated superior performance, most of these models exhibit strong
+dependence on high-quality data, and their output lacks interpretability.
+These limitations significantly constrain the reliability and generaliza­
+tion capability of data-driven models [33]. Therefore, some researchers
+have begun to explore integrating physical models or physical laws into
+data-driven models to leverage the advantages of both [34–36]. The
+physics-guided loss function is a common approach in physics-data
+fusion models. For example, in order to explicitly characterizing the
+degradation process, Wang et al [37]. designed a physics-guided loss
+function considered the monotonicity and trend of the tool wear process.
+Li et al [38]. designed a physics-based loss function to constrain model
+training. Physics modeling based on Wiener process is another method
+for integrating physics and data. Li et al [39]. constructed linear and
+nonlinear degradation models with different drift terms. Based on this,
+they proposed a Wiener-based RUL prediction method that incorporates
+multiple degradation patterns. Li et al [40]. also established a tool life
+model based on nonlinear Wiener processes. The difference is that the
+evolution laws of different wear stages are taken into account in this
+model. In addition, Gaussian processes are also employed in
+physics-data fusion. For example, under the assumption that the tool
+wear is a progressive process, Li et al [41]. utilized the covariance matrix
+of the Gaussian process regression (GPR) model to constrain the pre­
+dicted values at adjacent times to a linear relationship, thereby
+achieving the wear modeling under the condition of continuous changes
+
+180
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Firstly, feature engineering is the core support for the prediction
+models. Its construction quality directly determines the completeness of
+the tool degradation process representation and the generalization of the
+prediction model.
+Secondly, tool wear is a progressive failure process under the
+
+coupling effects of material fatigue damage and thermo-mechanical load
+in essence. Its degradation process exhibits strong nonlinear and
+nonstationary characteristics. How to use limited historical information
+to accurately predict tool wear and RUL at multiple time points in the
+future is still worth further exploration.
+
+Fig. 1. Overall framework for multi-step prediction of tool wear and RUL. This framework includes five main steps: signal acquisition, feature extraction based on
+STSA method, physics-based feature enhancement, model construction, multidimensional experiment analysis.
+181
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Thirdly, data-driven models are still mainly used in the existing
+multi-step prediction. These models fail to effectively integrate the
+physical laws of tool wear. This limitation easily leads to the physically
+inconsistent output of the model, which limits its application in the
+actual machining conditions.
+Finally, limited by the ‘black box’ characteristics of data-driven
+models, the decision-making transparency of data-driven models is
+low, which makes it difficult to meet the reliability requirements of
+prediction results in industrial scenarios. Utilizing effective analysis
+methods can enhance the interpretability and provide quantitative ex­
+planations for the decision-making mechanism of the models.
+To address the above limitations, this paper proposes a new multistep prediction method, and its overall framework is shown in Fig. 1.
+It mainly includes five parts: signal acquisition, feature extraction based
+on symbolic time series approximation (STSA) method, physics-based
+feature enhancement, model construction, multidimensional experi­
+ment analysis. Furthermore, a comparison with other classic physicsguided constraint methods is presented in Table 1.
+The main contributions of this paper are as follows:
+
+4. The interpretability analysis method based on SHAP offers an indepth explanation of the decision mechanism of the prediction
+model. By accurately quantifying the contribution of each feature,
+this method not only reveals the relative importance of different
+features in the tool wear and RUL prediction task, but also clarifies
+the specific influence of these features on the model behavior, which
+significantly improves the reliability of the prediction results in the
+actual application environment.
+The remainder of the paper is organized as follows: Section 2 de­
+scribes the theoretical framework of the proposed method in detail.
+Section 3 introduces the dataset and preprocessing methods. In Section
+4, the proposed method is analyzed and validated. Section 5 concludes
+the paper and gives an outlook on future work.
+2. Methodology
+2.1. Multi-scale feature extraction based on STSA
+2.1.1. Multiscale signal decomposition
+Multi-scale signal decomposition techniques decompose complex
+non-stationary signals into sub-signals of different frequency scales,
+providing more comprehensive feature information related to tool wear
+and RUL [51]. In this study, DWT is applied to decompose nonstationary
+machining signals into multiple scales, effectively capturing the key
+information associated with tool degradation. Firstly, given signal x(t),
+after DWT, its low frequency and high frequency components can be
+expressed as [52]:
+∑
+cAj [n] =
+h[m]⋅x[2n − m]
+(1)
+m
+
+1. A physics-based feature enhancement method is proposed.
+Compared with the residual physics fusion method, this method does
+not require the explicit introduction of error between the physicsbased and data-driven models, thereby avoiding gradient insta­
+bility and potential overfitting due to the explicit modeling of the
+residual error. Furthermore, the generated physics-based benchmark
+wear curve provides a unified reference across different machining
+conditions, enhancing the generalization capability.
+2. A multi-step wear and RUL prediction model is constructed. This
+model is based on a Transformer and embeds hard–soft physics
+constraints. The experimental results show that the proposed method
+can accurately predict tool wear and RUL under 12, 24, 36 and 48
+steps.
+3. This paper proposes a physical-information hard-soft constraint
+embedding module. Compared with the individual monotonic con­
+straints and uncertainty-weighted multitask loss function, the pro­
+posed method achieves coordinated prediction of tool wear value
+and RUL. In addition, this method avoids the amplification of
+abnormal task effects caused by weight imbalance, thereby
+improving the stability and reliability of the model.
+
+cDj [n] =
+
+Constraint
+type
+
+Physical
+consistency
+
+Dependence
+on physical
+model
+
+Applicable
+scenarios
+
+Monotonicity
+constraint
+
+Hard
+
+√
+
+×
+
+Residual
+physics
+fusion
+
+Hard
+
+×
+
+√
+
+Uncertaintyweighted
+multitask
+loss
+
+Soft
+
+×
+
+×
+
+Ours
+
+Hard
++ Soft
+
+√
+
+√
+
+Simple systems
+with monotonic
+degradation
+behavior
+Systems
+governed by
+well-defined
+physical models
+Data-driven
+multitask
+learning
+problems
+without explicit
+physics
+Complex
+systems with
+incomplete or
+implicit
+physical
+mechanisms
+
+m
+
+g[m]⋅x[2n − m]
+
+(2)
+
+where cAj [n] and cDj [n] are the low-frequency approximation coefficients
+and high-frequency detail coefficients of the j TH layer, respectively.
+h[m] and g[m] represent the coefficients of the low-pass and high-pass
+filters, respectively. [2n − m] denotes downsampling operation.
+In an orthogonal wavelet, the low-pass filter h[m] and the high-pass
+filter
+g[m]
+satisfy
+the
+orthogonal
+mirror
+condition:
+g[m] = ( − 1)m h[1 − m]. Coefficients at different levels are generated by
+the following recurrence relation [53]:
+∑
+cj,k =
+hl− 2k cj+1,l
+(3)
+l
+
+Table 1
+Comparison of representative physics-guided constraint methods and their
+applicability in tool wear prediction.
+Physics-guided
+constraints
+method
+
+∑
+
+dj,k =
+
+∑
+l
+
+gl− 2k cj+1,l
+
+(4)
+
+where cj,k and dj,k are the scaling and wavelet coefficients obtained by
+projecting the signal into the space of approximation coefficients and
+detail coefficients. l is the length of the signal.
+2.1.2. fABBA feature extraction method
+STSA’s core mechanism enables symbolic discretization of contin­
+uous time series, providing a structured representation of complex
+temporal data [54]. On the premise of preserving the key features of the
+original sequence, such as trend and period, this approach reduces the
+data dimension to support precise predictive maintenance. The purpose
+of feature extraction is to extract the information related to the tool wear
+and RUL, providing a reliable guarantee for decision-making model.
+From this perspective, STSA and feature extraction have the same pur­
+pose. In addition, STSA has been widely used in bearing fault diagnosis
+[55] and electromechanical equipment condition monitoring [56],
+which has been proved to provide a new direction for industrial diag­
+nosis. fABBA method based on STSA can be divided into two parts:
+adaptive segmentation aggregation and symbolic representation.
+1) Adaptive segmentation aggregation
+According to local characteristics, the machining signals are
+182
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+dynamically divided into segments in the adaptive segmentation ag­
+gregation stage. Subsequently, the segmented signal is aggregated into
+feature values. Suppose the time series T is divided into n subsegments: T
+= [t0 , t1 , …, tN ], Given a compression tolerance threshold tol, By adap­
+tively selecting n +1 index points i0 = 0 < i1 < ⋯ < in = N, T = [t0 , t1 ,
+…, tN ] is approximated a chain of piecewise linear polygons connected
+by these index points. Thus, the time series T is divided into n sub­
+)
+(
+segments: pj = lenj , incj , j = 0, 1, …, N. The length of each subseg­
+ment in time direction satisfies lenj ∈ N := ij − ij− 1 ≥ 1. Incremental
+meet incj ∈ R := tj − tj− 1 . Starting from i0 = 0, given the indexij− 1 , we
+can find the largest possible ij , Meet ij− 1 < ij ≤ N and
+∑ij
+i=ij− 1
+
+(
+
+)2
+) i− i
+(
+(
+)
+j− 1
+− ti
+≤ ij − ij− 1 − 1 ⋅tol2
+tij− 1 + tij − tij− 1 ⋅
+ij − ij− 1
+
+Table 2
+List of features extracted through fABBA.
+Mathematical equation
+
+Compression ratio
+
+N
+K
+K
+1 ∑K
+l
+k=1 k
+K
+√̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅
+1 ∑K
+(l − l)2
+k=1 k
+K
+∑
+1
+K
+Δ
+k=1 k
+K
+√̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅
+1 ∑K
+(Δk − Δk )2
+k=1
+K
+li × Δi (i = 0, 1, 2, 3, 4)
+
+Segment count
+Mean of segment length
+Standard deviation of segment length
+Mean of segmented increments
+Standard deviation of segment increments
+Product of length and increment
+
+(5)
+
+Based on the above, the time series T = [t0 , t1 , …, tN ] is converted to n
+)
+(
+subsegment: pj = lenj , incj , and the number of segments is controlled
+by tol, A lower tol value leads to a better signal representation. At the
+same time, this will also impose a computational burden.
+2) Symbolic representation
+After the adaptive piecewise aggregation of the time series is
+completed, fABBA maps the piecewise features into symbolic sequences
+through a rank-based aggregation algorithm. Firstly, the segmented
+subsequence can be represented as the following tuple:
+(
+(
+)
+)
+len1 inc1
+lenn incn
+p1 = scl
+,
+,
+, …, pn = scl
+(6)
+
+σlen σ inc
+
+Feature name
+
+change) is denoted as Δk . At the same time, fABBA will cluster these (lk ,
+Δk ) to obtain a number of cluster centers. The specific features are
+shown in Table 2.
+2.2. Physics-based feature enhancement method
+2.2.1. Physical model selection
+There are many physical models to describe the tool wear process. By
+summarizing the relevant literature of the researchers, several classical
+physical models are extracted:
+1) Extended Taylor’s equation (ETE)
+The original Taylor model was proposed by Taylor in 1907, and its
+basic form is [10]:
+
+σ len σinc
+
+where σ len and σ inc represent the standard deviation of the tuple's length
+and increment, respectively, normalized separately by their standard
+deviation before tokenization. scl is the weight used to control the length
+and increment.
+Following normalization, fABBA uses norm sort or lexicographical
+sort for segment ordering. The norm sort makes the neighboring points
+have similar global distribution characteristics. While the lexicograph­
+ical sort is divided into bins according to the standardized segment
+length. And the bins are arranged in incremental ascending order to
+adapt to the characteristics of piecewise discretization. Considering that
+the cutting signal is non-stationary and nonlinear, the segment length
+may vary continuously in dynamic conditions. Strategies based on
+lexicographical sorting may lead to information loss or less fine toke­
+nization. Therefore, the l 2 norm sort is adopted for fast grouping. This
+sorting method integrates the multi-dimensional information of segment
+length and increment, and aggregates the segments with similar shape
+into symbols, which is suitable for the dynamic feature capture of nonstationary signals.
+It is worth noting that, compared with the original ABBA, fABBA uses
+the ranking feature to introduce an early termination strategy, and its
+core mechanism is based on the following principles:
+)
+(
+When two data points pi and pj satisfy dist pi , pj < α, where α
+
+vc ⋅T m = CT
+
+(8)
+
+where vc is the cutting speed, T is the tool life, m is the material corre­
+lation index, CT is the constant related to the workpiece-tool combina­
+tion. This model quantifies for the first time the power-law relationship
+between cutting speed and tool life.
+In order to further accurately represent the process of tool wear, a
+variety of Taylor expansion formulas have been proposed, and the
+typical expression is [57]:
+W = a⋅vb ⋅f c ⋅td
+
+(9)
+
+where W represents the average flank wear, f and t represent the feed
+rate and cutting time, and a , b , c and d represent the coefficients
+dependent on tool type and workpiece material.
+2) Sipos model
+Sipos model is another important formula in TWM, and its basic form
+is [58]:
+)
+(
+(10)
+W = tc • exp A + B⋅tc + C⋅t2c
+where, W represents the wear values, tc represents the cutting time, and
+A, B, and C are model parameters. This model describes the relationship
+between wear and time, and can quickly estimate the flank wear.
+3) General wear model with adjustable coefficient:
+This model is proposed by Zhu and Zhang, its basic form is [59]:
+
+represents a hyperparameter, the norm difference must be satisfied
+⃒
+⃒
+(
+)
+⃒
+⃒
+(7)
+⃒|pi | − |pj |⃒ ≤ dist pi , pj ≤ α
+This indicates that norm similarity is a necessary but not sufficient
+for spatial proximity of data points. Using this feature, efficient clus­
+tering is achieved by incremental neighborhood search after norm
+ranking. That is, from the current point pi , Simply iterate over all the
+subsequent points in the sorted sequence that satisfy ‖ pk ‖≤‖ pi ‖ + α.
+Once the first ‖ pk ‖>‖ pi ‖ +α is detected, the early termination condi­
+tion can be triggered in advance to avoid redundant distance calculation
+for subsequent points. Based on the fABBA method, the feature extrac­
+tion to characterize the tool wear state is carried out. Suppose that the
+
+W = a⋅In(b⋅t + 1) + c⋅t 3
+
+(11)
+
+where W represents the flank wear values, t represents the time, and a, b
+and c are the adjustable coefficients of the model. This physical model
+has the advantages of simple structure and high accuracy [60].
+In Section 3.1, the corresponding performance comparison of the
+above physical models is carried out to determine the best physical
+model.
+
+time series after multi-scale signal is X = {xt }Nt=1 , after fABBA segmen­
+tation, a total of K segments are obtained, the length of the k segment is
+denoted as lk , and the corresponding increment (or slope/amplitude
+
+2.2.2. Parameter fitting
+The nonlinear least-squares method is used to fit the parameters of
+the physical model. The formula is as follows:
+183
+
+S. Jiang et al.
+
+SSR =
+
+∑n
+i=1
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+(WTure − WFitted )2
+
+generated by alternately populating sine and cosine values at different
+frequencies, which compensates for the alignment invariance of the selfattention mechanism. As a result, the model can efficiently process
+sequential data and achieve improved performance.
+
+(12)
+
+where SSR represents the sum of squared residuals, WTure represents the
+actual values of tool wear, and n is the total number of tool wear labels.
+WFitted are the fitted values.
+The purpose of the nonlinear least-squares method is to minimize the
+sum of squared differences between the fitted and actual values of the
+model, thereby establishing a reliable benchmark prediction curve. In
+the above two steps, the wear data in the training set and validation set
+were used to determine the parameters of the physical model. Subse­
+quently, the parameterized physical model was used to generate a wear
+evolution curve. It is worth noting that this curve is directly produced by
+the physical model. It conforms to established physical wear rate prin­
+ciples. Specifically, wear value increases monotonically with time or
+cutting cycles, and the wear rate exhibits stage-dependent variations
+across the initial, normal, and severe wear stages.
+
+2.3.2. Historical information embedding
+Temporal causality is critical for multi-step prediction. Precise
+modeling of tool wear and RUL values versus historical information can
+provide more accurate prediction results. First, the history of both can be
+represented as a two-dimensional matrix: X ∈ RN×L , where N is the
+number of predictor variables and L is the length of predictor variables.
+Subsequently, L is unfolded at equal intervals according to a fixed size P,
+which is expressed as follows:
+Xpatch = unfold (X, size = P, stride = P)
+
+(14)
+
+Through this step, each sample, the historical sequence of each
+variable is cut into L/P local subsequences. The length of each patch is P.
+The benefits of this are obvious. It not only reduces the computational
+complexity of global self-attention, but also makes it easier to capture
+local information in each local window of length P through the seg­
+mentation operation.
+After unfolding, each patch is mapped to a high-dimensional space
+with dimension dmodel through a linear layer. Subsequently, the posi­
+tional encoding is added to it, and a learnable vector is assigned to each
+variable: gn ∈ Rdmodel , is assigned to each variable as a global token.
+Finally, the position encoding is concatenated with the global token:
+)
+(
+(15)
+∈ R2dmodel
+Zout = Concat Zpos , gn
+
+2.3. Transformer-based multi-step prediction model
+The constructed Transformer-based multi-step prediction model is
+shown in Fig. 2. This model consists of five main components: positional
+coding embedding; feature embedding; historical information embed­
+ding; attention coding architecture; and feedforward and residual
+connection layer.
+2.3.1. Positional coding embedding
+The original Transformer model lacks time-series comprehension, so
+it requires explicit position encoding to inject position information into
+the sequence. For the time series data of the tool wear, the component
+generates a position encoding matrix using the sine/cosine function. For
+each position p and dimension index i, the encoding is calculated as:
+⎧
+(
+)
+⎪
+pos
+⎪
+⎪
+⎪
+⎨ PE(pos,2i) = sin 100002i/dmodel
+(13)
+(
+)
+⎪
+pos
+⎪
+⎪
+⎪
+⎩ PE(pos,2i+1) = cos 100002i/dmodel
+
+where, Zpos represents the high-dimensional vector for position encod­
+ing, and gn represents the global token corresponding to each variable.
+2.3.3. Feature embedding
+The feature embedding representation module linearly combines the
+features through a learnable weight matrix. Therefore, the highdimensional embedding vector of each feature can characterize its
+evolution pattern across the entire sequence. Its mathematical expres­
+sion is as follows:
+
+where pos denotes the position index, dmodel denotes the embedding
+dimension, and i denotes the dimension index. 10000 is a hyper­
+parameter to control the wavelength. Multiscale positional coding is
+
+Z = X⋅wT
+
+(16)
+
+Fig. 2. The constructed Transformer model based on multi-head self-attention mechanism and cross-attention mechanism for multi-step prediction of tool wear
+and RUL.
+184
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+normalization. Finally, the updated global features are passed back to
+the main network to participate in feedforward computation.
+
+where X ∈ RL×N , denotes the input feature sequence data; w ∈ Rdmodel ×L is
+the weight matrix that maps time steps to higher dimensions. The output
+Z ∈ Rdmodel ×N is the high-dimensional embedding representation of the
+features.
+
+2.3.5. Feedforward and residual connection
+In this model, the feedforward network adopts 1D convolution
+instead of the fully connected layer used in traditional Transformer to
+enhance the nonlinear fitting capability by expanding the hidden layer
+dimension. It consists of two levels of 1D convolution with a nonlinear
+activation function. Its formula can be represented as:
+
+2.3.4. Attention coding architecture
+The attention mechanism is an important part of the Transformer. In
+this model, multi-head self-attention is used to capture the temporal
+dependencies inherent in the prediction target. Cross-attention captures
+dependencies between different features relevant to the prediction
+target.
+1) Multi-head self-attention mechanism
+The main framework of the multi-head self-attention mechanism is
+shown in Fig. 3.
+Assume that the input sequence is MX ∈ RL×dmodel . First, three sets of
+linear mappings are applied to MX to obtain query vector Q = MX WQ ,
+key vector K = MX WK , value vector V = MX WV , respectively, where WQ ,
+WK , WV ∈ Rdmodel ×dmodel . Setting the number of attention heads to H
+will divide the dmodel equally among each head. Scaled dot product
+attention is then performed separately for each head:
+( T)
+QK
+(17)
+Attention(Q, K, V) = softmax √̅̅̅̅ V
+dk
+√̅̅̅̅
+where Q, K, V ∈ Rdmodel , dk is the normalization factor, which is
+used to address the numerical instability caused by large dot product
+values. Then, concatenate the outputs of each head along the dimension:
+MultiHead(Q, K, V) = Concat(head1 , …, headh )WO
+
+FFN (X) = LayerNorm(X + F(X) )
+
+(20)
+
+where F(⋅) denotes the composite transformation of ascending,
+activating and descending dimensions.
+The nonlinear activation function uses the ReLU or GELU activation
+function to enhance the nonlinear representation, and the discard layer
+is used to randomly dropout some neurons to suppress overfitting.
+The residual connection adopts cross-layer skip connections with
+layer normalization to solve the problem of vanishing gradients. The
+addition of layer normalization ensures the stability of the data distri­
+bution. After residual connection, the outputs of the multi-head selfattention layer, cross attention layer and the feedforward layer are
+calculated respectively according to the following formulas:
+XMH = LayerNorm(X + Dropout(MultiHeadSelfAttention(X) ) )
+
+(21)
+
+)))
+(
+XCA = LayerNorm XMH + Dropout CrossAttention xgbl , XMH
+
+(22)
+
+XFFN = LayerNorm(XCA + Dropout(FFN(XCA ) ) )
+
+(23)
+
+(
+
+(18)
+
+(
+
+where LayerNorm represents layer normalization operation, Dropout
+represents random dropping.
+
+where WO ∈ Rdmodel ×dmodel is used to map the concatenated results
+of all heads back to a unified dimension.
+2) Cross-attention mechanism
+Unlike the multi-head self-attention mechanism, the cross-attention
+mechanism takes the real-time state as the query vector, and extracts
+the corresponding keys and values from the features. First, the end time
+step x ∈ RL×dmodel is extracted from the self-attention output xgbl ∈ Rdmodel
+as a global representation of the tool current state, and to compute its
+relationship with the feature matrix:
+( T)
+QK
+(19)
+CrossAttention(X1 , X2 ) = Softmax √̅̅̅̅̅ V
+d2
+
+2.4. Hard-soft physical constraints
+Due to the cumulative effect of wear, tool wear values should remain
+strictly monotonically increasing, while the RUL values should remain
+strictly monotonically decreasing. However, traditional data-driven
+models lack physical constraints, which can lead to outputs that
+violate physical laws, such as oscillatory decreases in wear values or
+unexpected increases in RUL values. To address this problem, this study
+proposes a physical knowledge embedding module that integrates hardsoft constraints, as shown in Fig. 4. Specifically, we ensure that the
+model’s output does not violate the fundamental physical laws by
+imposing strict constraints. Meanwhile, adaptive multi-task optimiza­
+tion is employed to implicitly constrain of tool wear and RUL values,
+forming a hierarchical and progressive output that adheres to physical
+principles. It is worth noting that the physics-based model is a semi-
+
+where X1 denotes the global representation of the tool current state,
+and X2 denotes the feature matrix, which is mapped to keys and values
+using the projection matrices WK and WV .
+Subsequently, the information fusion between the features and the
+prediction target is achieved through a residual connection and layer
+
+Fig. 3. Multi-head self-attention mechanism architecture. (a) scaled dot-product attention. (b) multi-head attention.
+185
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+function can be employed to realize an effective soft constraint between
+these prediction results.
+In this study, a multi-task loss function with homoscedastic uncer­
+tainty weighting is employed. Firstly, in order to model the inherent
+uncertainty of tasks, the observation noise parameter is introduced. The
+errors of wear and RUL prediction tasks are treated as gaussian distri­
+butions with zero mean and variance σ2i :
+)
+(
+)
+(
+(26)
+p yi |fW (x) = N yi ; fW (x), σ 2i
+where yi represents the true values of the task, and fW (x) represents the
+model's predicted output. Subsequently, a Gaussian likelihood is estab­
+lished for the tool wear and RUL prediction task, and the negative loglikelihood is taken to obtain the loss function with variance terms:
+L (W, σ1 , σ2 ) =
+
+1
+1
+L1 (W) + 2 L2 (W) + logσ1 + logσ 2
+2σ21
+2σ 2
+
+(27)
+
+where Li (W) = |yi − fW (x)|2 . To ensure numerical stability, a variance
+parameter si = logσ 2i is introduced, and the final trainable loss function
+can be expressed as:
+)
+∑2 (1
+1
+L (W, s1 , s2 ) =
+e− si Li (W) + si
+(28)
+i=1 2
+2
+where e− si represents the adaptive weight, which is used to dynamically
+adjust the contribution of the loss to the prediction of tool wear and RUL.
+si represents the task-related uncertainty, which is automatically learned
+from the data.
+By employing a multi-task loss with homoscedastic uncertainty
+weighting, the relative contributions of the tool wear and RUL tasks are
+learned automatically. This approach avoids the tediousness and
+subjectivity of manual hyperparameter tuning, effectively achieving
+dynamic balance and stable joint training of the two tasks.
+
+Fig. 4. The proposed hard-soft physical knowledge embedding module. In this
+case, the methods of constructing hard physical constraints and soft physical
+constraint as well as constraint process of the Mechanism are described.
+
+empirical constraint that applies physical laws at the model output,
+resulting in a monotonically increasing trend for the wear value and a
+monotonically decreasing trend for the RUL.
+2.4.1. Hard physical constraint
+For the monotonicity requirement of tool wear and RUL, this study
+designs a bidirectional-chained constraint. Wear prediction achieves
+strict temporal monotonic increase through non-negative incremental
+constraints, mathematically represented as:
+∑t
+)
+(
+(0)
+(24)
+y(t)
+max Δy(k) , ϵ1
+0 = y0 +
+
+3. Dataset for multi-step prediction model
+3.1. Case 1: PHM2010
+3.1.1. Experiment introduction
+The PHM2010 public dataset was used to validate the proposed
+method. This dataset is one of the most frequently used datasets in the
+tool wear and prediction [62]. The experimental data collection process
+is illustrated in Fig. 5.
+These milling experiments were performed on a Rüoders Tech
+RFM760 machining center, and stainless-steel workpieces were
+machined under dry conditions with three-flute carbide ball-end milling
+tools. The experiments were designated C1 to C6. Each group was
+stopped after 315 consecutive cuts. Three of the datasets containing
+wear labels (C1, C4, and C6) are used in this study.
+Consistent machining parameters were maintained throughout the
+machining process, as shown in Table 3. One Kistler dynamometer and
+three Kistler piezoelectric accelerometers were used to collect force and
+acceleration signals in the X, Y and Z directions. A Kistler acoustic
+emission sensor was used to collect the AE signals. A DAQ NI PCI 1200
+acquisition card was used to capture these signals at a sampling rate of
+50 kHz.
+This dataset uses a LEICA MZ12 microscope to record the wear
+values of three cutting edges of the tool. It is worth noting that the tool
+average wear value is used as the criterion for dividing wear stages in
+this study. This choice is based on the following considerations. Firstly,
+during the machining process, multiple cutting edges of the tool usually
+jointly participate in the cutting machining, the average wear value
+provides a more comprehensive representation of the overall tool
+health. In addition, in practical measurements, individual edges may
+exhibit abnormal wear values due to built-up edge or measurement er­
+rors. Choosing the average wear value helps to eliminate such occasional
+
+k=1
+
+where ϵ1 corresponds to the minimum wear step, avoiding the physical
+
+contradiction of zero or positively increasing degradation rates. y0
+
+(0)
+
+(t)
+denotes the current wear value, and y0 denotes the next wear value. For
+
+RUL prediction, this study utilizes an inverse accumulation strategy to
+enforce monotonic decrease, mathematically represented as:
+∑t
+)
+(
+(0)
+(25)
+y1 = y1 −
+max Δy(k) , ϵ2
+k=1
+
+where ϵ2 denotes the minimum lifetime loss step.
+2.4.2. Soft physical constraint
+Tool wear and RUL are essentially two complementary perspectives
+that characterize tool degradation process, relying on largely shared
+information. The multi-task loss function enables the model to learn a
+universal degradation process within largely shared information,
+significantly enhancing feature representation capability and general­
+izability [61]. Meanwhile, this method forms an implicit attention
+mechanism for key physical degradation features. Compared to strictly
+physics-guided loss functions, the multi-task loss function shows stron­
+ger adaptability and flexibility in in complex machining. This is because
+it only requires establishing the connection between tool wear and RUL.
+More importantly, the multi-task loss function naturally constricts the
+physical consistency between wear and RUL predictions through the
+joint optimization process. For example, larger wear values must
+correspond to shorter remaining life. Therefore, the multi-task loss
+186
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 5. Signal acquisition and tool wear measurement platform during milling machining of PHM2010 dataset. (a) Placement positions of accelerometers, dyna­
+mometer and acoustic emission sensors during the machining. (b) Hardware and software systems for signals acquisition. (c) Tool wear measurement equipment.
+
+complete and valid signal during a single milling. Meanwhile, since the
+windows are non-overlapping, the stride parameter was not set.
+In addition, considering the multi-channel signals such as cutting
+force and vibration have significantly different units and dynamic
+ranges, direct normalization in the raw signal domain may disrupt the
+physical correlations between channels. Therefore, to preserve the
+physical interpretability of the signals, Z-score standardization is per­
+formed after feature extraction to prevent gradient explosion and
+accelerate model convergence.
+In this study, a three-level discrete wavelet transform (DWT) was
+employed to achieve multi-scale signal analysis, where the Daubechies 4
+(DB4) wavelet was selected as the basis function and the decomposition
+level was set to 3. In the subsequent feature extraction process, only the
+low-frequency approximation component and the level-3 high-fre­
+quency detail component were utilized. Taking advantage of the
+inherent low-pass filtering characteristics of wavelet decomposition,
+each decomposition level applied a high-order filter prior to downsampling to achieve anti-aliasing, thereby ensuring the spectral integ­
+rity of the decomposed signals.
+Subsequently, features are extracted from the multiscale decom­
+posed signals using the fABBA method described in Section 2.1.2. Based
+on the known data, physics-based feature enhancement approach pro­
+posed in Section 2.2 is used to establish the benchmark curve of wear
+behavior for unknown conditions. To apply this method to the PHM2010
+dataset, a physical model fitting scheme is designed, as shown in
+Table 5. Furthermore, the coefficient of determination (R²) is used for
+quantitative evaluation to determine the best physical model. Table 6
+
+Table 3
+Cutting parameters for PHM2010 dataset.
+Parameter
+
+Value
+
+Cut in the axial direction
+Cut in the radial direction
+Feed rate
+Spindle speed
+
+0.2 mm
+0.125 mm
+1555 mm/min
+10,400 rpm
+
+abnormal situations and provides a more stable wear indicator. Addi­
+tionally, following the method in reference [63], the expectation
+maximization (EM) algorithm is used to classify the wear stages. Table 4
+presents the complete division results of the wear stages and the cor­
+responding thresholds. The visualization results are presented in Fig. 6.
+3.1.2. Data preprocessing
+The signals collected during the milling are first subjected to multi­
+scale decomposition using the methods described in Section 2.1. Fig. 7
+shows the results of the multiscale decomposition of the X-axis cutting
+force signals with the 32nd cut in C1.
+In PHM2010 dataset, the collected signals during the milling are first
+subjected to preprocessing. The workpiece utilized in the PHM2010
+dataset was a stainless-steel block measuring 108 mm in length along
+the tool feed direction. The tool paused briefly after each 108 mm
+milling pass to record the signals and wear values, and this process was
+repeated to obtain a total of 315 samples. Notably, the samples are in­
+dependent. Therefore, in this study, the selected window length was the
+Table 4
+Partition and threshold of C1, C4, and C6 groups in PHM2010 dataset.
+Group
+
+Initial wear
+
+Threshold (10− 3mm)
+
+Normal wear
+
+Threshold (10− 3mm)
+
+Severe wear
+
+Threshold (10− 3mm)
+
+C1
+C4
+C6
+
+1–47
+1–135
+1–81
+
+86.50799
+94.53765
+106.89404
+
+48–146
+136–204
+82–188
+
+98.84205
+96.06208
+125.56267
+
+147–315
+205–315
+189–315
+
+165.17241
+203.07792
+215.94224
+
+Fig. 6. The wear value of each flute, average wear values and wear stage divisions of three tools in the PHM2010 dataset. (a) - (c) C1, C4, C6 group.
+187
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Table 7
+Physical models fitting performance on the PHM2010 Dataset.
+
+Table 5
+Physical model fitting scheme configuration for PHM2010
+dataset.
+Target unknown group
+
+C1 C4
+C4 C6
+C1 C6
+
+C6
+C1
+C4
+
+parameters
+
+values
+
+C1
+
+a
+b
+c
+d
+a
+b
+c
+d
+a
+b
+c
+d
+
+1.2136 ± 0.1747
+624.04 ± 0.41215
+(3.7684 ± 0.2213) × 10− 8
+-63.252 ± 21.202
+13.739 ± 1.927
+2.4454 ± 32.109
+(3.0584 ± 0.2007) × 10− 8
+1.0532 ± 171.55
+10.714 ± 0.91674
+561.19 ± 0.21041
+(3.1071 ± 0.11718) × 10− 8
+-50.426 ± 11.026
+
+C4
+
+C6
+
+Fitted
+groups
+
+Target
+group
+
+Generalized wear model with
+adjustable coefficients
+
+Sipos
+
+ETE
+
+C1 C4
+C4 C6
+C1 C6
+
+C6
+C1
+C4
+
+0.9328
+0.8474
+0.8677
+
+0.7727
+0.7043
+0.7511
+
+0.8991
+0.8219
+0.7995
+
+RUL(i) = If − i
+
+(29)
+
+where If denotes the total number of cutting operations for the tool, and i
+represents the current cutting operation. For PHM2010 dataset, detailed
+tool failure thresholds are listed in Table 9. Furthermore, the relation­
+ship between the tool wear value and the RUL value in the PHM2010
+dataset is depicted in Fig. 11.
+
+Table 6
+Applicable parameter range of the generalized wear model for the PHM2010
+dataset (95 % Confidence Level).
+Test set
+
+Physics models (R²)
+
+validation, and test data but also enhances the model’s generalization
+capability. The detailed training configuration is shown in Table 8.
+In tool wear and RUL experiments, even tools from the same batch
+may exhibit different wear evolution trends due to manufacturing
+variability, clamping errors, fluctuations in cutting conditions, and the
+inherent randomness of the wear process. Considering these factors, the
+RUL of the tool in this study is defined based on the actual machining
+process rather than a fixed threshold, as illustrated in Fig. 10.
+This definition method allows adaptation to the individual differ­
+ences among different tools and ensures the completeness of the
+degradation process. Therefore, it has been widely adopted on tool RUL
+prediction [64–66]. The RUL can be expressed as:
+
+Fig. 7. Multiscale decomposition results of the X-axis cutting force signals of
+the 32nd cuts of C1. (a) Original Signals. (b) Level 1 Detail Coefficient. (c) Level
+2 Detail Coefficient. (d) Level 3 Detail Coefficient. (e) Level 3 Approxima­
+tion Coefficient.
+
+Known groups
+
+Group settings
+
+3.2. Case 2: Self-constructed dataset
+3.2.1. Experimental introduction
+It is worth noting that the self-constructed dataset and the PHM2010
+dataset are completely independent in terms of data sources, experi­
+mental design, and training, validation, and testing procedures. The
+conclusions from the two experiments are independently established
+and do not depend on each other. The PHM2010 dataset offers a way to
+verify tool wear with constant cutting parameters. To further validate
+the effectiveness and generalization of the proposed method, this study
+specifically designed three-axis milling experiments in dry operation
+with three combinations of cutting parameters, as shown in Table 10.
+All the experiments were conducted on a HAAS VF-3 machining
+center, as shown in Fig. 10c. In each experiment, a fresh ball-end tool
+with a diameter of 12 mm with two flutes was used. The workpiece in
+the experiment was made of Ti-6Al-4V (TC4). This material has high
+tensile strength, low in density, and has excellent thermal stability,
+which makes it a key material in many high-end industrial fields.
+Meanwhile, this material maintains excellent tensile strength and fa­
+tigue resistance in high-temperature or corrosive environments. How­
+ever, due to its poor thermal conductivity, the heat generated during the
+cutting process cannot dissipate quickly. This causes the tools to with­
+stand increased cutting heat and cutting forces, which leads to a
+degradation in the workpiece’s surface roughness and dimensional ac­
+curacy.. Therefore, titanium alloy TC4 is designated as the workpiece
+material in tool wear experiments, whose chemical composition is listed
+in Table 11. The dimensions of the workpiece are 80 mm × 30 mm
+× 30 mm.
+In the experiments, the data acquisition platform is shown in Fig. 12.
+The acquisition process can be divided into two parts: signal acquisition
+and wear label acquisition. The signal acquisition uses a dynamometer
+(FC-K3D120), a accelerometer (WA0122D-100), and an acoustic emis­
+sion (AE) sensor (PXR50) to collect signals during the machining pro­
+cess. The dynamometer collects data at a sampling frequency of 5 kHz. A
+three-axis piezoelectric accelerometer is fixed to the machine tool
+
+presents the detailed parameter ranges of the generalized wear model
+with adjustable coefficients at the 95 % confidence level.
+The complete results obtained for the three physical models are
+shown in Table 7. As can be seen, the generalized wear model with
+adjustable coefficients demonstrates optimal performance. The perfor­
+mance of this model in each data sample is shown in Fig. 8.
+In addition, the model output curves against the actual observed data
+for each data split have been shown in Fig. 9. It is worth noting that the
+wear model parameters were fitted using only the training and valida­
+tion sets, without any data from the test set. This ensures the reliability
+of subsequent evaluations on the test set.
+After the above steps, the feature sets representing tool wear and
+RUL for C1, C4 and C6 are constructed for model training. Compared
+with the traditional feature engineering relying on manual expertise,
+this feature extraction method does not require manual selection, and
+avoids the problem of implicit loss of information in the degradation
+process to some extent. Specifically, we use two groups with complete
+wear stages in the PHM2010 dataset as the training and validation sets
+to predict another group with a complete wear stage as the test set. This
+splitting strategy not only ensures the independence of training,
+188
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+S. Jiang et al.
+
+Fig. 8. The fitting results of different groups in the PHM2010 dataset are obtained using the generalized wear model with adjustable coefficients. (a) The fitting
+results of C1 and C4 as the fitting group. (b) The fitting results of C4 and C6 as the fitting group. (c) The fitting results of C1 and C6 as the fitting group.
+
+Fig. 9. The fitted values and actual values of different groups in the PHM2010 dataset are obtained using the generalized wear model with adjustable coefficients: (a)
+- (c) C1, C4 and C6.
+
+spindle. It is integrated with an NI-9234 acquisition card and visuali­
+zation software for capturing signals at a sampling frequency of
+10.24 kHz. The AE sensor uses the PXDAQ24260 V2.0 acquisition sys­
+tem at a sampling frequency of 78.125 kHz.
+Wear labels were obtained using a digital microscope (AO-21TZ).
+Fig. 13 presents machining path, the measurement position, and the
+flank wear images of the tool after different numbers of cutting opera­
+tions. Wear condition I shows the surface of a new tool before cutting.
+Wear condition II corresponds to a flank wear (VB) value of 26.804 μm.
+As the number of cutting operations increases, the flank wear region
+expands progressively. Wear condition III reaches a VB value of 48.628
+μm, and further increases in cutting lead to wear condition IV, where the
+VB value reaches 124.749 μm. The criteria for splitting the training,
+validation, and test sets are consistent with those of the PHM2010
+dataset, and the detailed training configuration is presented in Table 12.
+For self-constructed dataset, the method for defining the RUL of the
+cutting tool is consistent with the PHM2010 dataset, detailed tool failure
+thresholds are listed in Table 13.
+In addition, similar to the PHM2010 dataset, the EM algorithm was
+employed to determine the tool wear stage and the corresponding
+threshold. The complete results are presented in Table 14.
+
+Table 8
+The configuration of training, validation and test sets of PHM2010 dataset.
+Training set
+
+Validation set
+
+Test set
+
+C4
+C6
+C1
+
+C6
+C1
+C4
+
+C1
+C4
+C6
+
+Fig. 10. Schematic diagram of tool RUL prediction principle.
+
+3.2.2. Data preprocessing
+Consistent with the PHM2010 dataset, the self-constructed dataset
+also employs DWT for multi-scale signal preprocessing. In particular, the
+DB4 is used as the wavelet basis function, and the decomposition level
+was set to 3. The low-frequency approximation component and the
+level-3 high-frequency detail component were retained for feature
+extraction. Subsequently, feature extraction is performed using the
+fABBA method. At the same time, a physics-enhanced feature is
+obtained.
+In addition, to enable the prediction model to fully capture temporal
+
+Table 9
+The wear failure thresholds of groups C1, C4 and C6 in the
+PHM2010 dataset.
+Group
+
+Tool failure thresholds (10− 3mm)
+
+C1
+C4
+C6
+
+165.17241
+203.07792
+215.94224
+
+189
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 11. The consistency relationship between the tool wear and the RUL value in the PHM2010 dataset. (a) – (c) C1 group, C4 group and C6 group.
+
+13th generation Intel Core i9–14900K at 3.20 GHz. The software version
+used was PyCharm 2025.2.4 (Professional). The construction and
+training of the model was done based on the PyTorch framework. In
+addition, L2 regularization was combined with an early stopping
+mechanism to suppress overfitting. Model hyperparameters govern
+learning dynamics and architecture, directly determining performance
+and generalizability. To maximize the generalization capability of pro­
+posed model, Bayesian optimization was employed to automatically
+tune the hyperparameters. This method is widely used in deep learning
+[68–70]. It can efficiently explore the hyperparameter space using
+limited computational resources and identify parameter combinations
+that achieve superior performance. The optimized hyperparameters and
+their corresponding search ranges are summarized in Table 17. During
+training, the Adam optimizer was employed, with the mean squared
+error (MSE) used as the loss function and a batch size of 128.
+
+Table 10
+Cutting parameter combinations for three-axis milling experiments.
+Test sets
+
+Cutting speed (m/min)
+
+Spindle speed (r/min)
+
+Cutting depth (mm)
+
+T1
+T2
+T3
+
+380
+340
+340
+
+3400
+3600
+3400
+
+1
+1
+1
+
+Table 11
+Chemical composition (wt%) of Ti6Al4V.
+C
+
+O
+
+Fe
+
+H
+
+N
+
+AI
+
+V
+
+Ti
+
+0.013
+
+0.152
+
+0.13
+
+0.0012
+
+0.017
+
+6.08
+
+4.05
+
+Bal.
+
+characteristics, a Piecewise Cubic Hermite Interpolating Polynomial
+(PCHIP) method was used to expand the wear values. This method uses
+piecewise cubic polynomials to construct interpolated data. Each poly­
+nomial segment depends only on the adjacent data points. This method
+effectively avoids unrealistic oscillations near the data points while
+preserving the sequence's monotonicity, making it applicable to signal
+processing and numerical analysis [67]. The original wear values and
+the corresponding interpolation results are shown in Fig. 14.
+Consistent with the PHM2010 dataset, Table 15 presents the detailed
+parameter ranges of the generalized wear model with adjustable co­
+efficients at the 95 % confidence level.
+Consistent with the method used on the PHM2010 dataset, the
+physics model output curves against the actual observed data for each
+data split in self-constructed dataset has been shown in Fig. 15.
+
+4.1. PHM2010
+4.1.1. Performance experiment
+In order to systematically evaluate the predictive ability of the pro­
+posed model under different time steps, this section sets four different
+prediction time steps: 12, 24, 36, and 48. Furthermore, the model's
+performance is examined across different wear stages. In this study, a
+sliding window with a stride of one is employed to maximize preser­
+vation of temporal dependencies in cutting signals. To reduce the
+volatility of individual predictions and improve overall stability, the
+multiple predictions over the same time step are averaged. This is a
+common technique in time series prediction [71,72]. In particular, the
+monotonicity of each single-shot prediction is guaranteed by the
+designed physical hard constraints. However, due to the differences in
+the initial value and growth rate of each sample, its average curve may
+still show transient non-monotonic fluctuations. This does not invalidate
+the constraints; it merely reflects the characteristics of aggregated to
+group statistics.
+The wear prediction results of C1 are shown in Fig. 16. It can be seen
+that the proposed method exhibits stage differences in tool full-cycle
+wear prediction. Specifically, in the initial and severe wear stages, the
+model shows excellent predictive accuracy at different steps (12, 24, 36,
+and 48), which can accurately capture the wear change trend. However,
+in the normal stage, the prediction accuracy of the model slightly de­
+creases. Meanwhile, as the prediction step increases, the model's ability
+to predict wear in the normal stage further weakens. This phenomenon
+occurs because when the tool enters the normal wear stage, the cutting
+signals gradually stabilize. Meanwhile, during this stage, wear increases
+only minimally, and in some samples remains unchanged. In contrast, in
+
+3.3. Performance evaluation metrics
+In this study, the mean absolute error (MAE), root mean square error
+(RMSE) and coefficient of determination (R2) are employed to system­
+atically evaluate the prediction performance. The mathematical defini­
+tions are shown in Table 16. Among these evaluation metrics, the
+smaller the values of MAE, RMSE, the higher the corresponding pre­
+diction accuracy. while an R2 value closer to 1 suggests a higher degree
+of agreement between the predicted and actual values. These evaluation
+metrics all come from test sets.
+4. Experimental validation and result analysis
+A computer equipped with an NVIDIA RTX 4060 graphics card and
+CUDA 12.6.4 version was used for these experiments.. The CPU was a
+
+190
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 12. Three-axis milling of Ti6Al4V titanium alloy and tool wear measurement experiment. (a) The placement locations of dynamometer, accelerometer and
+acoustic emission sensor. (b) Tool wear measurement platform. (c) Data acquisition system for machining signals.
+
+the initial and severe wear stages, the wear rate rises rapidly, accom­
+panied by significant signal changes. Therefore, it provides rich feature
+information for the model to accurately predict the wear.
+As the prediction step increases, the errors of single point prediction
+method exhibit a cumulative effect, resulting in a higher risk of devia­
+tion in the long-term degradation trajectory. In contrast, interval pre­
+diction provides confidence ranges for prediction results by quantifying
+the uncertainty of model outputs. Therefore, in order to further evaluate
+
+the performance of the proposed method under different prediction
+steps, the interval prediction method based on Bootstrap is employed
+[73,74]. In order to eliminate the impact of random fluctuations, 30
+independent repeated experiments are conducted, and the average value
+is calculated at a confidence level of 95 %. Meanwhile, Prediction In­
+terval Coverage Probability (PICP) and Prediction Interval Normalized
+Average Width (PINAW) are adopted to quantitatively evaluate the
+uncertainty of predictions.
+
+191
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 13. Schematic of ball-end milling machining and corresponding wear observations. (a) Milling path of the ball-end tool. (b) Measurement of the wear value
+position of the ball-end tool. (c) - (f) The ball-end tool wear conditions.
+
+as:
+
+Table 12
+The configuration of training, validation and test sets of self-constructed dataset.
+Training set
+
+Validation set
+
+Test set
+
+T1
+T2
+T3
+
+T2
+T3
+T1
+
+T3
+T1
+T2
+
+⎧
+⎪
+⎪
+⎪
+⎪
+⎪
+⎪
+⎪
+⎪
+⎨
+
+⎪
+⎪
+⎪
+⎪
+Count i =
+⎪
+⎪
+⎪
+⎪
+⎩
+
+Table 13
+The wear failure thresholds of groups C1, C4 and C6 in the selfconstructed dataset.
+Groups
+
+Tool failure thresholds (10− 3mm)
+
+T1
+T2
+T3
+
+311.195
+332.289
+311.421
+
+PICP =
+{
+
+1 ∑N
+Counti
+N i=1
+
+1
+
+Pi
+
+∈
+
+[Li , Hi ]
+
+0
+
+Pi
+
+∕
+∈
+
+[Li , Hi ]
+
+(30)
+
+where N is the total number of test samples, Pi is the true (observed)
+value for the i-th sample, Li and Hi are, the lower and upper bounds of
+the predicted interval for the i-th sample respectively. Count i is an in­
+dicator that equals 1 if the true value Pi falls within its prediction
+interval[Li , Hi ], and 0 otherwise.
+Ideally, the PICP should approach the preset confidence level. And
+PINAW quantifies the compactness of the interval width, which is
+mathematically defined as:
+
+PICP represents the proportion of true values falling within the
+prediction interval. It is used to measure the extent to which the pre­
+diction interval covers the true values, which is mathematically defined
+
+PINAW =
+
+1 ∑N
+(Hi − Li )
+NT i=1
+
+(31)
+
+Table 14
+Partition and threshold of T1, T2, and T3 groups in self-constructed dataset.
+Groups
+
+Initial wear
+
+Threshold (10− 3mm)
+
+Normal wear
+
+Threshold (10− 3mm)
+
+Severe wear
+
+Threshold (10− 3mm)
+
+T1
+T2
+T3
+
+1–111
+1–98
+1–114
+
+139.37
+145.135
+124.774
+
+112–233
+99–179
+115–219
+
+226.188
+230.734
+209.626
+
+234–299
+180–297
+220–300
+
+311.195
+332.289
+311.421
+
+192
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 14. Tool wear curves of the ball-end tools under different machining conditions. (a) The average wear value change curves of T1, T2, and T3 during the
+machining. (b) - (d) Average tool wear curves for T1–T3 after interpolated by PCHIP interpolation.
+
+presented in Table 18.
+As shown in Table 8, the PICP values in all cases are close to the
+predefined 95 % confidence level, indicating that the prediction in­
+tervals effectively cover the true values. From the evaluation results of
+different prediction steps, 12-step prediction shows the best perfor­
+mance, which verifies the high accuracy of the proposed method in
+short-term prediction. As the prediction step increases, the PINAW of all
+cases except C6 exhibit an upward trend. From the evaluation results of
+different wear stages, the PINAW values in the normal wear stage are
+higher than those in the initial wear and severe wear stages, which is
+
+Table 15
+Applicable Parameter Range of the Generalized Wear Model for the selfconstructed dataset (95 % Confidence Level).
+Test set
+
+parameters
+
+values
+
+T1
+
+a
+b
+c
+d
+a
+b
+c
+d
+a
+b
+c
+d
+
+82068 ± 0.0000010241
+(5.1002 ± 0.043183) × 10− 7
+(7.4521 ± 11.143) × 10− 11
+58.816 ± 6.2417
+38.165 ± 2.5599
+(8.8470 ± 3.4071) × 10− 3
+(7.7273 ± 0.19979) × 10− 10
+9.2175 ± 7.7994
+407.93 ± 0.05988
+(1.3944 ± 0.096008) × 10− 4
+(9.8578 ± 6.8371) × 10− 11
+51.351 ± 5.3964
+
+T2
+
+T3
+
+Table 16
+Evaluation metrics and mathematical expressions.
+Evaluation metric
+RMSE
+MAE
+
+where T is the range of tool wear values. A smaller value indicates a
+narrower average width of the prediction interval and higher accuracy
+within the uncertainty bounds. The complete wear prediction results are
+
+R2
+
+Equation
+√̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅
+1 ∑n
+(Prei − Acti )2
+i=1
+n
+1 ∑n
+MAE =
+|Prei − Acti |
+i=1
+n
+∑n
+2
+(Act
+i − Prei )
+R2 = 1 − ∑i=1
+n
+2
+i=1 (Acti − Act)
+
+RMSE =
+
+Fig. 15. The fitted values and actual values of different groups in the self-constructed dataset are obtained using the generalized wear model with adjustable co­
+efficients: (a) - (c) C1, C4 and C6.
+193
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+high coverage and narrow interval width strongly demonstrates the
+accurate prediction ability of the model for nonlinear abrupt wear in the
+severe wear stage. In summary, this method shows excellent prediction
+performance in 12, 24, 36, and 48 steps.
+Table 19 presents the PICP and PINAW values of the tool RUL at
+different wear stages. Compared with the results of tool wear prediction,
+the results of RUL prediction are superior. Most of the prediction results
+slightly decrease with the increase of step. It is worth noting that, in
+contrast to the tool wear prediction, the RUL prediction in the normal
+wear stage is better than wear prediction in the same stage. The values of
+PINAW are between 0.0002 and 0.0068. Overall, the proposed method
+can accurately predict RUL at 12, 24, 36, and 48 steps.
+
+Table 17
+Hyperparameters and search ranges used in Bayesian optimization.
+Parameter
+
+Search Range
+
+Model dimension
+Patch size
+Number of attention heads
+Feedforward neural network dimension
+Number of encoder layers
+Initial Learning Rate
+Weight decay
+
+[128, 256, 512]
+[1,5]
+[2,8]
+[512, 1024, 2048]
+[2,4]
+[1 × 10⁻⁵, 5 × 10⁻⁴]
+[1 × 10⁻⁶, 1 × 10⁻³ ]
+
+consistent with the visualization results in Fig. 16. It is worth noting that
+the model's performance indicators reach their best level in the severe
+wear stage, with the PICP values ranging from 95.2 % to 95.77 % and
+the PINAW values ranging from 0.0105 to 0.1246. This combination of
+
+4.1.2. Comparison experiment
+To further validate the performance advantages of the proposed
+
+Fig. 16. Performance evaluation on the C1 test set for different prediction steps and wear stages using the proposed method.
+194
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Table 18
+Evaluation results of interval prediction for wear across different wear stages and prediction steps.
+Case
+
+Steps
+
+C1
+
+12
+24
+36
+48
+12
+24
+36
+48
+12
+24
+36
+48
+
+C4
+
+C6
+
+Initial wear
+
+Normal wear
+
+Severe wear
+
+PICP
+
+PINAW
+
+PICP
+
+PINAW
+
+PICP
+
+PINAW
+
+98.20 %
+97.84 %
+97.21 %
+97.21 %
+95.47 %
+95.41 %
+95.55 %
+95.63 %
+96.20 %
+95.82 %
+96.43 %
+96.57 %
+
+0.0639
+0.1507
+0.1505
+0.3394
+0.1280
+0.2364
+0.2883
+0.3486
+0.2258
+0.3211
+0.3191
+0.2578
+
+95.79 %
+95.89 %
+95.93 %
+95.69 %
+96.47 %
+96.47 %
+96.47 %
+96.33 %
+95.86 %
+95.73 %
+95.86 %
+95.86 %
+
+0.1262
+0.3449
+0.5680
+0.8071
+0.5254
+1.1837
+2.2989
+2.5732
+0.0720
+0.1365
+0.2038
+0.2490
+
+95.60 %
+95.72 %
+95.40 %
+95.50 %
+95.53 %
+95.65 %
+95.65 %
+95.77 %
+95.49 %
+95.20 %
+95.49 %
+95.70 %
+
+0.0105
+0.0338
+0.0358
+0.0745
+0.0123
+0.0290
+0.0426
+0.1033
+0.0262
+0.0347
+0.0697
+0.1246
+
+Table 19
+Evaluation results of interval prediction for RUL across different wear stages and prediction steps.
+Case
+C1
+
+C4
+
+C6
+
+Steps
+12
+24
+36
+48
+12
+24
+36
+48
+12
+24
+36
+48
+
+Initial wear
+
+Normal wear
+
+Severe wear
+
+PICP
+
+PINAW
+
+PICP
+
+PINAW
+
+PICP
+
+PINAW
+
+99.28 %
+99.28 %
+98.65 %
+98.83 %
+97.76 %
+97.73 %
+97.79 %
+97.79 %
+98.12 %
+98.22 %
+98.22 %
+98.22 %
+
+0.0291
+0.0366
+0.0932
+0.1920
+0.0071
+0.0052
+0.0083
+0.0165
+0.0098
+0.0336
+0.0314
+0.0342
+
+97.98 %
+97.91 %
+97.95 %
+97.85 %
+98.16 %
+98.16 %
+98.16 %
+98.02 %
+97.88 %
+97.94 %
+97.91 %
+97.94 %
+
+0.0002
+0.0022
+0.0068
+0.0041
+0.0009
+0.0008
+0.0029
+0.0015
+0.0004
+0.0007
+0.0007
+0.0042
+
+97.75 %
+97.65 %
+97.61 %
+97.77 %
+97.90 %
+97.90 %
+97.84 %
+97.93 %
+97.74 %
+97.77 %
+97.80 %
+97.87 %
+
+0.0010
+0.0114
+0.0169
+0.0163
+0.0083
+0.0050
+0.0044
+0.0093
+0.0053
+0.0051
+0.0101
+0.0118
+
+multi-step prediction model for tool wear and RUL, several classic datadriven models are selected as benchmark models, including gated
+recurrent unit (GRU), Bidirectional gated recurrent unit (BiGRU), Bidi­
+rectional gated recurrent unit-attention (BiGRU-AT) and temporal con­
+volutional network (TCN). The specific parameter settings are as
+follows:
+
+• BiGRU: This model stacks two BiGRU layers. The structure as: Input
+→ BiGRU_1 (hidden size = 64) → BiGRU_2 (hidden size = 64) → FC
+(128 – prediction length) → Output
+• BiGRU-AT: This model stacks two BiGRU layers and an attention
+layer. The structure as: Input → BiGRU _1 (hidden size = 64) →
+BiGRU _2 (hidden size = 64) → Attention → FC (128 – prediction
+length) → Output
+• TCN: This model stacks two TCN layers. The structure as: Input →
+TCN _1 (channels=64, kernel size = 3) → TCN _2 (channels=64,
+kernel size = 3) → FC (64 – prediction length) → Output
+
+• GRU: This model stacks two GRU layers. The structure as: Input →
+GRU_1 (hidden size = 64) → GRU_2 (hidden size = 64) → FC (64 –
+prediction length) → Output
+
+Table 20
+Multi-step prediction evaluation results of different models for wear prediction on C1 as the test set.
+Prediction steps
+
+Models
+
+RMSE
+
+p-value
+
+MAE
+
+p-value
+
+R2
+
+p-value
+
+12
+
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+
+6.816519 ± 0.226414
+5.883704 ± 0.104723
+6.415949 ± 0.170464
+2.177982 ± 0.187202
+0.695181 ± 0.083625
+4.925597 ± 0.544839
+4.109801 ± 0.218086
+4.238184 ± 0.301062
+3.517593 ± 0.327430
+0.926807 ± 0.115598
+6.025938 ± 0.378982
+5.514018 ± 0.269543
+6.028948 ± 0.273813
+5.565059 ± 0.654722
+2.003769 ± 0.162016
+6.756049 ± 0.110635
+6.370425 ± 0.171448
+7.332609 ± 0.147934
+6.187783 ± 0.928968
+3.618621 ± 0.513278
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+5.003335 ± 0.151995
+4.378625 ± 0.073482
+4.808043 ± 0.120612
+1.790663 ± 0.148428
+0.445483 ± 0.032034
+4.124196 ± 0.518996
+3.394999 ± 0.186147
+3.654717 ± 0.277366
+2.879737 ± 0.205179
+0.673762 ± 0.083794
+5.272560 ± 0.342073
+4.793873 ± 0.254116
+5.431356 ± 0.250735
+4.196701 ± 0.290760
+1.383012 ± 0.094060
+5.996743 ± 0.117053
+5.592506 ± 0.160964
+6.799371 ± 0.168000
+4.913894 ± 0.581326
+3.035563 ± 0.615452
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+0.927984 ± 0.004788
+0.946384 ± 0.001922
+0.936222 ± 0.003371
+0.992606 ± 0.001212
+0.999240 ± 0.000176
+0.962021 ± 0.008505
+0.973781 ± 0.002774
+0.972062 ± 0.003823
+0.980692 ± 0.003399
+0.998649 ± 0.000328
+0.943579 ± 0.007220
+0.952822 ± 0.004635
+0.943616 ± 0.005038
+0.951450 ± 0.012063
+0.993742 ± 0.000985
+0.929310 ± 0.002340
+0.937123 ± 0.003419
+0.916719 ± 0.003347
+0.939513 ± 0.018811
+0.979317 ± 0.005631
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+24
+
+36
+
+48
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+
+195
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Table 21
+Multi-step prediction evaluation results of different models for wear prediction on C4 as the test set.
+Prediction steps
+
+Models
+
+RMSE
+
+p-value
+
+MAE
+
+p-value
+
+R2
+
+p-value
+
+12
+
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+
+7.203343 ± 0.200819
+6.812207 ± 0.249487
+6.807585 ± 0.135898
+7.187013± 0.753672
+1.220867 ± 0.056582
+9.424277 ± 0.233020
+9.085784 ±0.151510
+8.714979 ± 0.204610
+10.156881 ± 0.416958
+2.330021 ± 0.140177
+12.048714 ± 0.145587
+11.540050 ± 0.085638
+11.079560 ± 0.236078
+13.044765 ± 0.355566
+4.418584 ± 0.245182
+16.132883 ± 0.254563
+15.097078 ± 0.257586
+14.530546 ± 0.238987
+16.712224 ± 0.466954
+6.617436 ± 1.015057
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+5.652372 ± 0.090947
+5.258934 ± 0.151196
+5.287919 ± 0.180896
+6.543157 ± 0.716290
+0.701824 ± 0.030466
+7.888421 ± 0.152913
+7.498165 ± 0.060826
+7.229906 ± 0.207204
+9.191319 ± 0.422298
+1.634829 ± 0.087141
+10.367626 ± 0.100668
+9.900580 ± 0.079339
+9.339531 ± 0.254577
+11.374912 ± 0.332240
+3.511167 ± 0.227505
+13.590275 ± 0.243394
+12.580021 ± 0.304919
+11.719759 ± 0.336527
+13.880547 ± 0.398401
+5.356704 ± 0.656749
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+0.961272 ± 0.002185
+0.965346± 0.002574
+0.965422 ± 0.001375
+0.961093 ± 0.008118
+0.998885 ± 0.000105
+0.933720 ± 0.003286
+0.938413 ± 0.002051
+0.943324 ± 0.002622
+0.922940 ± 0.006253
+0.995936 ± 0.000480
+0.891709 ± 0.002613
+0.900668 ± 0.001477
+0.908404 ± 0.003917
+0.872997 ± 0.006925
+0.985393 ± 0.001599
+0.805834 ± 0.006132
+0.829960 ± 0.005806
+0.842485 ± 0.005163
+0.791538 ± 0.011615
+0.966570 ± 0.010789
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+24
+
+36
+
+48
+
+0.00781
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+
+0.00781
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+
+0.00781
+0.00195
+0.00195
+0.00195
+0.00390
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+
+Table 22
+Multi-step prediction evaluation results of different models for wear prediction on C6 as the test set.
+Prediction steps
+
+Models
+
+RMSE
+
+p-value
+
+MAE
+
+p-value
+
+R2
+
+p-value
+
+12
+
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+GRU
+BiGRU
+BiGRU-AT
+TCN
+Ours
+
+14.355415 ± 0.505413
+12.667499 ± 0.479743
+11.656284 ± 0.530443
+2.993115 ± 0.327376
+1.680672 ± 0.137001
+17.588708 ± 0.521248
+16.574165 ± 0.648025
+13.872687 ± 0.540751
+4.225212 ± 0.394625
+2.220760 ± 0.145516
+18.529892 ± 0.393097
+17.806705 ± 0.699621
+14.959466 ± 0.837783
+5.450403 ± 0.707623
+3.430798 ± 0.485509
+19.109411 ± 0.433723
+18.434443 ± 0.559356
+15.465276 ± 0.606478
+7.418572 ± 0.695875
+5.106184 ± 0.690110
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+8.299928 ± 0.302723
+7.283514 ± 0.264052
+7.017227 ± 0.312688
+2.296434 ± 0.308535
+0.768368 ± 0.051102
+10.900487 ± 0.373268
+10.411238 ± 0.374729
+8.944786 ± 0.362352
+3.186685 ± 0.246354
+1.365968 ± 0.069246
+12.074598 ± 0.283714
+11.720056 ± 0.440885
+10.101016 ± 0.519630
+4.024043 ± 0.453318
+2.652510 ± 0.332187
+12.993970 ± 0.289811
+12.661441 ± 0.306765
+10.859792 ± 0.397641
+5.140779 ± 0.213816
+4.052427 ± 0.532882
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+0.858260 ± 0.009995
+0.889613 ± 0.008454
+0.906480 ± 0.008223
+0.993779 ± 0.001393
+0.998046 ± 0.000323
+0.787290 ± 0.012734
+0.811011 ± 0.014631
+0.867599 ± 0.010198
+0.987639 ± 0.002311
+0.996597 ± 0.000434
+0.764008 ± 0.010077
+0.781854 ± 0.016906
+0.845818 ± 0.017158
+0.979281 ± 0.005628
+0.991751 ± 0.002230
+0.749001 ± 0.011437
+0.766334 ± 0.013983
+0.835452 ± 0.012796
+0.961890 ± 0.007130
+0.981760 ± 0.005227
+
+0.00195
+0.00195
+0.00195
+0.00195
+
+24
+
+36
+
+48
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+
+In the wear comparative experiment, ten different random seeds
+(123, 1117, 1357, 2027, 2469, 3333, 3407, 6666, 7980, 9999) were
+utilized to ensure the robustness and reliability of the evaluation results.
+Meanwhile, the mean ± standard deviation of the evaluation metrics
+(RMSE, MAE, and R2) was calculated from the results of each experi­
+mental run.
+Furthermore, to assess the statistical significance of the proposed
+model’s performance improvement over the baselines, the pairedsample Wilcoxon signed-rank test was employed. This non-parametric
+test evaluates differences using the rank information of paired obser­
+vations and offers strong robustness, since the data are not assumed to
+follow a normal distribution. This approach ensures that the evaluations
+are more reliable, and it is widely adopted in engineering and ML ap­
+plications for quantifying performance disparities [75,76].
+The basic significance level (∝) was set to 0.05 to determine the
+presence of significant differences between the proposed and baseline
+models, which is a universally accepted standard [77,78]. In addition, a
+smaller p-values indicates a higher level of statistical significance for the
+observed difference between the proposed model and the baseline
+models.
+Tables 20–22 present the complete wear prediction and the corre­
+sponding Wilcoxon signed-rank test results for test sets C1, C4, and C6
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00195
+0.00390
+
+across various prediction steps on the PHM2010 dataset. Throughout
+these tables, the best performing metric for each prediction step and
+evaluation criterion is highlighted.
+As shown in Table 20, using C1 as the test set, using C4 and C6 as
+training and validation set, the proposed model achieved the best overall
+performance across all prediction steps. For the longest 48-step predic­
+tion, the proposed model achieved an RMSE of 3.618621 ± 0.513278, an
+MAE of 3.035563 ± 0.615452, and an R2 of 0.94317 ± 0.005631.
+Compared to best-performing baseline model, the TCN model (RMSE:
+6.187783 ± 0.92868; MAE: 4.913894 ± 0.581326; R2: 0.939513 ±
+0.018811), the proposed model still maintains the highest accuracy.
+Furthermore, the results of the Wilcoxon signed-rank test indicate
+that the p-values for all evaluation metrics are less than 0.005 compared
+to the baseline model. These robust statistical results strongly confirms
+that the performance differences between the proposed model and the
+baseline models are highly statistically significant.
+Table 21 presents the complete evaluation results across various
+prediction steps for test set C4. Consistent with the trend observed in
+Table 1, the proposed model achieved the best performance across all
+examined prediction steps. The results from the Wilcoxon signed-rank
+test confirm the statistical superiority of the proposed model over the
+baselines models. Specifically, the p-values obtained from the
+196
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 17. Reliability diagrams obtained using C1 as the test set with the seed set to 123. (a) - (d) 12, 24, 36, 48 step predictions.
+
+perfectly calibrated reference line, where predictions would match the
+true values exactly.
+To obtain stable and representative statistics across different RUL
+ranges, ten equally spaced bins were used. This choice strikes a balance
+between smoothness and resolution. In the Fig. 17(a) - (d), the blue binaveraged curves follow an approximately linear trend and remain close
+to the ideal calibration line, demonstrating that the model maintains
+good overall calibration performance. For the 12 and 24 step pre­
+dictions, the blue curves align closely with the ideal line, suggesting
+reliable short-term prediction accuracy. For the 36-step and 48-step
+predictions, a slight deviation emerges in the low - RUL region, where
+the model tends to underestimate the RUL value during the severe wear
+stage, the predicted RUL is somewhat lower than the true value,
+reflecting a conservative prediction tendency.
+Overall, Fig. 17(a) - (d) clearly illustrates the calibration perfor­
+mance of the model under different prediction steps. The model exhibits
+strong reliability in short-term forecasting (12 and 24 steps). In contrast,
+for longer steps (36 and 48 steps), the calibration performance shows
+moderate degradation while still staying within an acceptable range.
+These results demonstrate that the model possesses good potential for
+practical applications in tool health monitoring and remaining life
+management.
+In addition, the Transformer-based model proposed in this study
+demonstrates excellent predictive capability. However, its complex ar­
+chitecture results in relatively high computational cost. To assess the
+practical feasibility of deploying the model for near real-time tool wear
+
+comparison with the GRU model at the 24-step prediction was 0.00781,
+which is slightly higher than the significance outcomes observed when
+comparing against the other baseline models. This value remains sub­
+stantially below the pre-set significance level of ∝ = 0.05, thereby
+confirming that the performance difference is statistically significant.
+As illustrated in Table 22, the proposed model achieved the best
+performance metrics among all prediction steps. Particularly in 24-step
+and 36-step predictions, the RMSE of the proposed model was only
+2.220760 ± 0.145516 and 3.430789 ± 0.485509, respectively. The re­
+sults of the Wilcoxon signed-rank test confirm the statistical superiority
+of the proposed model with extremely high significance. Specifically, all
+p-values were recorded at 0.00195, except for the 48-step comparison
+against the TCN model, which resulted in a p-values of 0.0039. Both of
+these values are far below the ∝ = 0.05.
+To evaluate the reliability of the model’s RUL predictions under
+different prediction steps, Fig. 17 presents the reliability diagrams ob­
+tained using C1 as the test set with the seed set to 123. Fig. 17 (a) - (d)
+correspond to prediction horizons of 12, 24, 36, and 48 steps, respec­
+tively. Taking Fig. 17 (a) as an example, the horizontal axis represents
+the predicted RUL values for the 12-step forecasting task on the C1 test
+set, while the vertical axis denotes the corresponding true RUL. The red
+scatter points show the paired predicted - true RUL values for all sam­
+ples. The blue curve depicts the relationship between the average pre­
+dicted and average true RUL within each bin. The gray shaded area
+indicates the 90 % confidence interval, reflecting the variability of
+prediction errors within each bin. The black dashed line represents the
+197
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Table 23
+The comparison results of training time (s) and inference time (one multi-step wear sequence prediction) (ms) in PHM2010 dataset.
+Models
+
+C1
+
+C4
+
+C6
+
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+
+12-step prediction
+
+24-step prediction
+
+36-step prediction
+
+48-step prediction
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+24.27 / 5.1
+14.2 / 4.1
+8.25 / 3.56
+
+0.069 / 0.035
+0.027 / 0.024
+0.029 / 0.026
+
+13.29 / 2.75
+5.6 / 2.64
+5.39 / 2.45
+
+0.086 / 0.036
+0.032 / 0.029
+0.035 / 0.031
+
+9.65 / 3.1
+5.17 / 2.83
+5.71 / 3
+
+0.057 / 0.032
+0.036 / 0.033
+0.038 / 0.037
+
+6.2 / 4.03
+5.36 / 3.48
+5.86 / 3.55
+
+0.079 / 0.035
+0.042 / 0.038
+0.043 / 0.039
+
+4.63 / 1.67
+16.47
+32.31 / 6.76
+13.29 / 4.06
+8.85 / 3.68
+
+0.032 / 0.032
+0.574
+0.068 / 0.035
+0.038 / 0.025
+0.029 / 0.029
+
+6.64 / 1.81
+15.7
+26.08 / 3.18
+10.76 / 2.68
+8.74 / 2.37
+
+0.039 / 0.034
+0.798
+0.054 / 0.035
+0.032 / 0.029
+0.03 / 0.031
+
+6.82 / 2.71
+38.4
+33.62 / 3.1
+10.66 / 3.13
+8.52 / 3.49
+
+0.041 / 0.039
+1.199
+0.081 / 0.055
+0.038 / 0.033
+0.04 / 0.039
+
+4.78 / 3.74
+57.3
+25.44 / 3.99
+11.06 / 3.34
+7.94 / 3.81
+
+0.045 / 0.047
+1.596
+0.1 / 0.034
+0.068 / 0.038
+0.041 / 0.047
+
+5.93 / 1.58
+41.15
+17.61 / 4.41
+10.48 / 4.46
+6.29 / 3.62
+
+0.035 / 0.031
+1.281
+0.075 / 0.023
+0.03 / 0.028
+0.29 / 0.027
+
+10.36 / 2.15
+28.28
+12.1 / 3.14
+5.86 / 2.61
+6.1 / 2.36
+
+0.04 / 0.04
+1.118
+0.062 / 0.03
+0.033 / 0.029
+0.033 / 0.031
+
+12.42 / 3.13
+69.64
+16.91 / 3.21
+6.78 / 3.05
+5.88 / 2.94
+
+0.043 / 0.041
+1.876
+0.1 / 0.044
+0.053 / 0.033
+0.04 / 0.037
+
+13.96 / 3.58
+28.15
+9.68 / 5.05
+11.13 / 3.85
+5.57 / 3.89
+
+0.05 / 0.047
+1.416
+0.043 / 0.037
+0.1 / 0.04
+0.041 / 0.046
+
+5.47 / 1.69
+64.08
+
+0.036 / 0.031
+1.184
+
+6.53 / 1.82
+98.56
+
+0.036 / 0.037
+1.525
+
+8.6 / 3.03
+32.09
+
+0.04 / 0.042
+1.379
+
+11.33 / 3.99
+29.7
+
+0.049 / 0.048
+1.662
+
+Fig. 18. Top 13 feature importance and SHAP value distributions for wear prediction on the C4 test set at different prediction steps using global SHAP analysis (a)(d) SHAP summary plot of the top 13 features for 12, 24, 36, 48 step prediction.
+198
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+prediction, both the training time and inference time are reported and
+compared with those of the baseline models, including GRU, BiGRU,
+BiGRU-AT and TCN. Specifically, the training time indicates the total
+time required to train the model on the training dataset, the inference
+time is the average time required for predicting one multi-step wear
+sequence. All measurements were conducted under the same hardware
+conditions. The results are summarized in Table 23.
+
+features tends to be balanced, indicating that the model makes full use
+of feature information of different scales in a longer prediction step. It is
+worth noting that the SHAP results for 24, 36, and 48 steps show more
+obvious discontinuities than those for 12 steps. This suggests that the
+nonlinear relationship between features and wear prediction is more
+complex. In addition, the physics-enhanced feature ranks highly among
+all features, except in the 24-step case, which clearly reflects the ad­
+vantages of this method in improving the interpretability and effec­
+tiveness of the wear prediction model.
+In addition, using C1 as the test set, the overall SHAP analysis of the
+top 13 features for its 12-step predictions is presented in Fig. 19. The
+results indicate that low-frequency and historical information features
+rank among the most important. Notably, the physics-enhanced feature
+proposed in this study also demonstrate significant contributions to
+wear prediction, ranking 4th, 9th and 9th in initial normal and severe
+stage, respectively.
+Furthermore, Fig. 20 presents the local SHAP analysis results for the
+11th, 174th, and 237th predictions. Taking Fig. 20.a as an example, the
+physics-enhanced feature contributes + 0.03 to the prediction, and the
+trend_segment_inc_mean feature contributes − 0.01. Overall, under the
+cumulative influence of all the features, the base prediction value
+increased from 0.045 to 0.58.
+The complete global SHAP analysis for wear prediction is shown in
+Fig. 21, the importance distribution trend of the C1 and C6 test sets is
+consistent with that of the C4 test set in the wear prediction task. For the
+12-step prediction, low-frequency information is dominant, and the
+total proportion of high-frequency information on C1, C4 and C6 test
+sets is only 4.98 %, 0.95 % and 2.28 %, respectively. However, as the
+prediction step increases to 24, 36 and 48 steps, the importance of highfrequency information increases significantly. For the 48-step predic­
+tion, the proportion of high-frequency information in the three test sets
+reaches 49.2 %, 51.3 % and 56.2 %, respectively, approaching parity
+with low-frequency information.
+It is worth noting that the physics-enhanced feature shows satisfac­
+tory results in predicting 12, 24, 36, and 48 steps. Specifically, in the 12step prediction, the importance of this feature in the C1, C4 and C6 test
+sets reaches 8.39 %, 8.07 % and 9.69 % respectively. This significantly
+proves the effectiveness of the physics-enhanced feature in short-term
+prediction. Although its importance fluctuates, its contribution re­
+mains significant for 36 and 48-step predictions. On average, the pro­
+portion is 1.85 % in the 24-step prediction and rises to 4.55 % in the 36step prediction. Even in the longest prediction of 48 steps, this feature
+makes up 2.89 %, 3.79 % and 2.37 % of the three test sets, respectively.
+Compared with the proportion of the most important features on each
+test set, the average difference of the physics-enhanced feature is only
+2.66 %. In summary, it plays a crucial role in tool wear prediction across
+most scenarios, particularly in the 12, 24, 36 steps wear prediction tasks.
+In addition to the wear prediction evaluation, a global SHAP analysis
+
+4.1.3. SHAP interpretability analysis
+SHAP analysis method was proposed by Lundberg and Lee in 2017
+[79]. This method treats each feature as a contributor based on game
+theory. By calculating its Shapley value, this method quantifies the
+marginal contribution of the feature to the model prediction result,
+achieving the interpretability of the model. The Shapley value can be
+defined as:
+φi (f, x) =
+
+∑
+S∈N{i}
+
+|S|!(M − |S| − 1 )!
+[f(S ∪ {i}) − f(S) ]
+M!
+
+(32)
+
+where φi represents the Shapley value of feature i, f denotes the pre­
+diction model, x is the specific input, S represents the subset of all fea­
+tures except i, and M is the total number of features. f(S) is the prediction
+of the subset S.
+It should be clarified that no target-derived features enter the model
+to avoid compromising the evaluation of model performance and
+generalization. Taking the C4 test set as an example, Fig. 18 shows the
+analysis results of the top 13 important features (ranked by global SHAP
+values) extracted at the prediction time steps of 12, 24, 36, 48 with the
+wear as the prediction target. The color bar on the right characterizes the
+feature values from low to high. A negative SHAP value indicates that
+the feature contributes to a lower prediction value. while a positive
+SHAP value suggests a contribution to a higher prediction value. It is
+important to note that SHAP values reflect feature contributions to the
+output, rather than their impact on prediction performance. For
+example, in the 12-step prediction, the yellow points of low_comp_ratio,
+low_segment_len_std, and historical RUL are concentrated at negative
+SHAP values. This suggests that the lower values of these features
+contributing to a decrease in prediction values rather than a deteriora­
+tion in the model's predictive performance. A detailed analysis of Fig. 18
+reveals that low-frequency features dominates the overall feature
+importance in the 12-step prediction, while high-frequency features
+contribute relatively less. However, in the context of the 24-step pre­
+diction, the importance distribution of high-frequency and lowfrequency features tends to be balanced, although the high-frequency
+features are in the forefront. This balance carried over to the 36-step
+and 48-step predictions. In general, as the prediction step size in­
+creases to 24, 36, and 48, the distribution pattern of feature importance
+changes significantly: the importance of high-frequency features grad­
+ually increases. The contribution of low-frequency and high-frequency
+
+Fig. 19. Top 13 feature importance and SHAP value distributions for wear prediction on the C1 test across different wear stages using global SHAP analysis (a) - (c)
+SHAP summary plot of the top 13 features across initial, normal and severe stage.
+199
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 20. Top 13 feature importance and local SHAP analysis results for wear prediction on the C1 test across for the 11th, 174th, and 237th predictions: (a) 11th, (b)
+174th, (2) 237th.
+
+Fig. 21. Heatmap of global SHAP feature importance scores (%) for wear prediction across different test sets and prediction steps.
+
+is performed for RUL prediction. The complete results are presented in
+Fig. 22. In the 12-step prediction, the distribution of the importance
+proportion exhibits an opposite trend compared to that observed in wear
+prediction. Specifically, high-frequency features dominate, whereas
+low-frequency features contribute relatively little. However, as the
+prediction step increases, the gap between the proportion of lowfrequency information and high-frequency information gradually nar­
+rows. In the 48-step prediction, the contributions of low- frequency and
+high-frequency features become comparable, with average proportions
+of 44.39 % and 47.54 % across the three test sets, respectively.
+Compared to wear prediction, the physics-enhanced feature exhibits
+slightly lower importance in RUL prediction. In the 12-step prediction,
+the importance proportion of the three test sets is only 0.22 %, 0.11 %
+and 0.43 %, respectively. However, as the prediction step size increases,
+the importance of this feature also increases. In the longest 48-step
+prediction, the proportion of this feature rises to 3.53 %, 2.31 % and
+
+2.87 %, respectively. Compared with the other features with highest
+proportion in the same prediction step size, the differences are 2.09,
+4.32 and 2.27, respectively.
+This phenomenon may be due to the effectiveness of the physicsenhanced feature changes dynamically with the prediction step size.
+Specifically, the physics-enhanced feature reflects the cumulative pro­
+cess of tool wear. In the shorter 12-step prediction, the changes in this
+feature are relatively minor, and it is difficult to provide clear infor­
+mation for model prediction. In contrast, the other features that exhibit
+significant fluctuations are more likely to correlate with the RUL
+prediction.
+When the prediction step is extended to 24, 36 or 48 steps, the longterm degradation trend becomes increasingly apparent. Meanwhile, this
+phenomenon also shows the importance of the model's ability to capture
+trend features in long sequence prediction tasks.
+
+200
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 22. Heatmap of global SHAP feature importance scores (%) for RUL prediction across different test sets and prediction steps.
+
+Fig. 23. Comparative analysis results of wear prediction between the proposed model and constructed comparison models on the T1, T2 and T3 test sets at different
+prediction step. (a) - (c) RMSE, MAE, R2 values of proposed model and comparison models.
+
+4.2. Self-constructed dataset
+
+demonstrating the model’s superiority. In the 12-step prediction, the
+minimum RMSE of the proposed model is only 2.7786, which signifi­
+cantly outperformed other comparison models. In the 24-step predic­
+tion, the RMSE is reduced by an average of 15.72 % compared to the
+comparison model with the best performance. In the 36-step prediction,
+the MAE of the proposed model remained lower than that of the other
+models. On the T2 test set, the MAE is reduced by 40.31 % compared to
+the best-performing comparison model. In the 48-step prediction on the
+T2 test set, the proposed model achieves a 40.87 % reduction in RMSE
+and a 30.91 % reduction in MAE compared to the best-performing
+comparison model. It is worth noting that, as the prediction step
+
+4.2.1. Comparison experiment
+To further validate the generalization ability and accuracy of the
+proposed method, comparative experiments are conducted with GRU,
+BiGRU, BiGRU-AT and TCN. The hyperparameter settings for these
+models are consistent with those detailed in Section 4.1.2.
+Fig. 23 presents the comprehensive wear prediction results under
+different prediction steps. As can be seen, the proposed model achieved
+the best prediction performance in most cases. The prediction metric R²
+of the proposed model exceeded 0.96 in all experimental results,
+
+201
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+Fig. 24. Comparative analysis results of RUL prediction between the proposed model and constructed comparison models on the T1, T2 and T3 test sets at different
+prediction step. (a) - (c) RMSE, MAE, R2 values of proposed model and comparison models.
+Table 24
+The comparison results of training time (s) and inference time (one multi-step wear sequence prediction) (ms) in self-constructed dataset.
+Models
+
+T1
+
+T2
+
+T3
+
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+GRU
+BiGRU
+BiGRUAT
+TCN
+Ours
+
+12-step prediction
+
+24-step prediction
+
+36-step prediction
+
+48-step prediction
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+Training times
+(Wear/RUL)
+
+Inference time
+(Wear/RUL)
+
+37.93 / 4
+11.63 / 3.33
+8.44 / 2.65
+
+0.081 / 0.11
+0.026 / 0.039
+0.027 / 0.026
+
+39.1 / 3.62
+13.11 / 3.53
+9.38 / 3.62
+
+0.091 / 0.028
+0.066 / 0.03
+0.035 / 0.033
+
+22.84 / 2.13
+11.19 / 2.25
+10.21 / 2.56
+
+0.062 / 0.027
+0.048 / 0.033
+0.036 / 0.038
+
+30.91 / 2.78
+12.25 / 2.64
+10.33 / 2.67
+
+0.099 / 0.036
+0.04 / 0.036
+0.043 / 0.056
+
+6.7 / 1.2
+49.86
+6.37 / 2.34
+5.79 / 2.45
+4.88 / 2.39
+
+0.039 / 0.032
+1.562
+0.047 / 0.023
+0.025/ 0.024
+0.031 / 0.027
+
+8.59 / 1.67
+78.19
+22.69 / 3.55
+7.55 / 3.41
+6.89 / 3.25
+
+0.041 / 0.036
+2.4
+0.088 / 0.028
+0.033 / 0.033
+0.033 / 0.03
+
+10.31 / 2.3
+80.53
+11.08 / 2.25
+4.18 / 2.42
+4.24 / 2.12
+
+0.043 / 0.038
+2.42
+0.076 / 0.029
+0.35 / 0.035
+0.034 / 0.034
+
+17.26 / 3.93
+46.25
+10.69 / 2.42
+4.41 / 2.4
+4.77 / 2.94
+
+0.05 / 0.045
+1.867
+0.09 / 0.036
+0.043 / 0.037
+0.041 / 0.044
+
+5.98 / 1.25
+88.96
+12.33 / 2.33
+8.85 / 2.93
+6.07 / 2.71
+
+0.038 / 0.029
+2.203
+0.06 / 0.034
+0.038 / 0.026
+0.03 / 0.026
+
+8.21 / 2.3
+14.26
+27.35 / 3.55
+9.66 / 3.28
+7.03 / 3.17
+
+0.044 / 0.04
+0.821
+0.081 / 0.028
+0.031 / 0.029
+0.034 / 0.033
+
+9.52 / 3.35
+8.62
+17.51 / 2.03
+7.84 / 2.24
+6.88 / 1.99
+
+0.046 / 0.042
+0.808
+0.082 / 0.028
+0.036 / 0.032
+0.039 / 0.034
+
+12.22 / 3.51
+17.47
+20.99 / 2.43
+7.77 / 2.23
+6.66 / 2.31
+
+0.051 / 0.047
+1.067
+0.083 / 0.034
+0.059 / 0.035
+0.038 / 0.038
+
+5.75 / 1.08
+22.25
+
+0.037 / 0.033
+1.027
+
+7.12 / 1.78
+73.76
+
+0.039 / 0.038
+3.124
+
+8.01 / 2.72
+5.86
+
+0.044 / 0.041
+0.785
+
+7.83 / 3.76
+28.8
+
+0.047 / 0.044
+7.942
+
+Fig. 25. Proportional feature importance for wear prediction across T1, T2, and T3 test sets at different prediction steps based on global SHAP analysis. (a) - (c)
+Proportional feature importance for the T1, T2, T3 test set.
+
+202
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+increases, the proposed model’s prediction results show varying degrees
+of decline. This is consistent with the results obtained on the PHM2010
+dataset.
+In addition, a comparative evaluation experiment of RUL is con­
+ducted. Fig. 24 presents the comprehensive results of RUL prediction
+under different time steps. The results demonstrate that the proposed
+model achieves the best performance in all cases. In the 12-step pre­
+diction, compared to the best-performing comparison model, the RMSE
+of the proposed model is reduced by 77.9 %, 77.69 %, and 76.5 %,
+respectively. This significant advantage over other comparison models is
+further maintained in the 24, 36 and 48-step predictions. Specifically, in
+the 24-step prediction, compared to the best-performing comparison
+model, the RMSE is reduced by 64.08 %, 73.25 %, and 51.80 %,
+respectively. In the 36-step prediction, compared to the best-performing
+comparison model, the MAE of the proposed model is reduced by
+60.25 %, 57.35 %, and 75.69 %, respectively. In the longest 48-step
+prediction, the proposed model maintained low RMSE and MAE,
+significantly outperforming the comparison models. The maximum
+RMSE observed is only 2.0209.
+Overall, the results demonstrate that the proposed method is
+significantly superior to the comparison models in both tool wear and
+RUL prediction tasks. The RUL prediction achieves task even higher
+accuracy than wear prediction, which aligns with the observations from
+the PHM2010 dataset.
+Similar to the experiments conducted on the PHM2010 dataset,
+Table 24 presents a detailed comparison of computational costs for the
+proposed model and the baseline models (GRU, BiGRU, BiGRU-AT,
+TCN), reporting both training time and average inference time for
+multi-step wear sequence predictions.
+
+the results obtained on the PHM2010 dataset. It is worth noting that
+high-frequency information and low-frequency information are
+composed of multiple features, and compared to these features, the
+importance of the physics-enhanced feature still ranks at the top. Similar
+to the physics-enhanced feature, the importance proportion of historical
+information is also gradually decreasing. This phenomenon is similar to
+the SHAP analysis results on the PHM2010 dataset.
+In addition, the SHAP analysis for RUL is also conducted, and the
+results are shown in Fig. 26. Overall, the proportion of feature impor­
+tance in RUL shows an opposite trend to the wear prediction. Taking the
+T1 test set as an example, the proportion of high-frequency information
+is 65.5 %, which is much higher than the proportion of low-frequency
+information. As the prediction step increases, the proportion of lowfrequency information gradually increases overall. In the 24-step pre­
+diction, the proportion of high-frequency information is 47.7 %, and the
+proportion of low-frequency information is 42.2 %. In the 36-step and
+48-step predictions, the difference with high-frequency information is
+approximately 10 %.
+In contrast to the wear prediction results, the importance of the
+physics-enhanced feature increases as the prediction step increases. In
+the 12 and 24-step predictions, the proportion of physics-enhanced
+feature is relatively low. However, its importance increases in the 36and 48-step predictions, particularly in the 36-step prediction of the T1
+test set, where it reaches 7.2 %. This indicates that in the long-term
+prediction of RUL, the physics-enhanced feature can provide more in­
+formation. Similar to the trend observed in the importance proportion of
+the physics-enhanced feature, the historical information has a lower
+proportion of importance in the 12 and 24-step predictions, while it has
+a higher proportion of importance in the 36 and 48-step predictions.
+Overall, the inputs of the proposed model comprise three compo­
+nents: historical information, physics-enhanced feature and physically
+meaningful features. Physically meaningful features are extracted by the
+fABBA algorithm from multi-band signals of acceleration, AE, and cut­
+ting force, which can be further partitioned into low-frequency and
+high-frequency information. Notably, the physically meaningful fea­
+tures consistently assume a dominant role in the tool wear and RUL
+multi-step predictions. The complete prediction results shown in Figs. 25
+and 26 proves this point. Taking the T1 test set as an example, the
+contribution ratios of these features in 12, 24, 36 and 48-step wear
+predictions are 76.3 %, 83 %, 87.9 %, and 88.1 %, respectively.
+In summary, the SHAP analysis provides a way to understand the
+internal decision-making process of the model. Its results indicate that
+both high-frequency and low-frequency information are important for
+the model’s predictions. In wear prediction, at the prediction step of 12
+steps, low-frequency information dominates. With increasing prediction
+
+4.2.2. SHAP interpretability analysis
+SHAP analysis provides a way to deeply understand the model's
+decision-making mechanism. Fig. 25 shows the contribution ratios for
+the 12, 24, 36 and 48-step predictions from the innermost to the
+outermost layers. Fig. 25 (a) shows that, in the 12-step prediction, lowfrequency information dominates the model prediction, while highfrequency information contributes relatively less. As increasing predic­
+tion steps, the contribution rate of high-frequency information gradually
+becomes equal to the proportion of low-frequency information. This
+trend aligns with the results observed on the PHM2010 dataset. For
+shorter prediction steps, low-frequency trend information provides
+richer information. With increasing prediction steps, the model can
+learn equally from low- and high-frequency information.
+As the prediction step increases, the importance of the physicsenhanced feature shows a downward trend, which is consistent with
+
+Fig. 26. Proportional feature importance for RUL prediction across T1, T2, and T3 test sets at different prediction steps based on global SHAP analysis. (a) - (c)
+Proportional feature importance for the T1, T2, T3 test set.
+203
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+steps, the proportion of high-frequency information increases overall.
+However, in RUL prediction, the opposite trend is observed. The pro­
+posed physics-enhanced feature has a relatively high proportion in most
+cases, indicating their importance for the model.
+
+degradation process. Therefore, in the next step, the physical knowledge
+of tool wear will be combined with advanced model interpretability
+methods to provide a more in-depth interpretation of the prediction
+results.
+
+5. Conclusions
+
+CRediT authorship contribution statement
+
+The multi-step prediction of tool wear and RUL is of great signifi­
+cance for tool replacement warning and predictive maintenance. This
+paper proposes a multi-step wear and RUL prediction method based on
+Transformer, which combines time series symbolization, physical
+knowledge guidance, and multi-task learning. This method can auto­
+matically extract degradation information from machining signals,
+achieve accurate and reliable predictions under different prediction
+steps, and fully utilize physical information to enhance the interpret­
+ability of the outputs. The main conclusions of this study are as follows:
+
+Shanglei Jiang: Funding acquisition, Conceptualization, Method­
+ology, Software, Writing – review & editing. Haoyuan Zhang: Meth­
+odology, Software, Validation, Writing – original draft. Zhengmao
+Chen: Validation, Investigation, Data curation. Yuwen Sun: Project
+administration, Supervision, Writing – review & editing. Xuexia Liu:
+Visualization, Supervision, Writing – review & editing.
+Declaration of Competing Interest
+The authors declare that they have no known competing financial
+interests or personal relationships that could have appeared to influence
+the work reported in this paper.
+
+(1) A feature extraction method based on multi-scale physical in­
+formation fusion is proposed. In this method, the application of
+fABBA based on STSA effectively reduces the dependence of
+traditional feature engineering on domain knowledge. Based on
+the physical model, a benchmark curve representing the wear
+behavior is established and jointly input into the model along
+with the automatically extracted features.
+(2) The constructed Transformer-based multi-step wear and RUL
+prediction model shows good prediction accuracy. Combined
+with the proposed physical constraints, it can achieve more
+physically interpretable outputs. Comparative experiments on
+the PHM2010 public dataset show that for the 12-step prediction,
+using C1 as test set, the MAE of wear prediction is only 0.445483
+± 0.032034, and the RMSE is 0.695181 ± 0.083625, indicating
+that the model can accurately capture the short-term dynamic
+characteristics of tool wear. In the longest 48-step forecast, the
+proposed model achieved an R2 value of approximately 0.96,
+further demonstrating the model's ability to accurately predict
+long-term wear trends.
+(3) The Bootstrap interval prediction method is introduced to quan­
+tify the uncertainty of the model's outputs, and the performance
+of the prediction intervals is evaluated by the PICP and PINAW
+indicators. The results show that in the severe wear stage, the
+PICP value is between 95.2 % and 95.77 %, and the PINAW value
+is between 0.0105 and 0.1246. This combination of high
+coverage and narrow interval width fully validates the stability
+and reliability of the model during critical wear stages.
+(4) The SHAP method is used to analyze the decision-making
+mechanism of the model. The results show that for wear predic­
+tion, in the shorter prediction step (12 steps), low-frequency in­
+formation dominates. As the prediction step increases, the
+proportion of high-frequency information overall shows an
+increasing trend. For RUL prediction, high-frequency information
+is dominant in the 12-step prediction, but the importance of lowfrequency information also increases overall with the increase in
+the prediction step, revealing the differentiated role of feature
+information in different tasks and different prediction steps.
+
+Acknowledgments
+This work was supported by the National Natural Science Foundation
+of China (Grant No. 52205450), the Natural Science Foundation of
+Liaoning Province (Grant No. 2024MS167), the Postdoctoral Research
+Foundation of China (Grant No. 2023M740459), and the Fundamental
+Research Funds for the Provincial Universities of Liaoning (Grant No.
+LJ212410150050).
+Data availability
+The data used in this study are publicly available.
+References
+[1] Sun Y, Yan S, Sun S, Niu J, Xu J, Chen M, Liu J, Guo D. A review of chatter
+suppression in thin-wall milling: strategies, mechanisms, and applications. Int J
+Extrem Manuf 2025;7:062003. https://doi.org/10.1088/2631-7990/adec24.
+[2] Sun Y, Jia J, Xu J, Chen M, Niu J. Path, feedrate and trajectory planning for freeform surface machining: A state-of-the-art review. Chin J Aeronaut 2022;35:12–29.
+https://doi.org/10.1016/j.cja.2021.06.011.
+[3] Yang Y, Yang Y, Liu H-C, Wan M, Zhang W-H. A new cutting tool filled with
+metallic lattice and design method for vibration suppression in milling. Mech Syst
+Signal Process 2024;212:111310. https://doi.org/10.1016/j.ymssp.2024.111310.
+[4] Li W, Fu H, Han Z, Zhang X, Jin H. Intelligent tool wear prediction based on
+Informer encoder and stacked bidirectional gated recurrent unit. Robot
+ComputIntegr Manuf 2022;77:102368. https://doi.org/10.1016/j.
+rcim.2022.102368.
+[5] Sun M, Wang X, Guo K, Huang X, Sun J, Li D, Huang T. Tool wear monitoring based
+on physics-informed Gaussian process regression. J Manuf Syst 2024;77:40–61.
+https://doi.org/10.1016/j.jmsy.2024.09.001.
+[6] Bai L, Liu H, Zhang J, Zhao W. Real-time tool breakage monitoring based on
+dimensionless indicators under time-varying cutting conditions. Robot Comput
+Integr Manuf 2023;81:102502. https://doi.org/10.1016/j.rcim.2022.102502.
+[7] Wang R, Song Q, Peng Y, Qin J, Liu Z, Liu Z. Toward digital twins for highperformance manufacturing: Tool wear monitoring in high-speed milling of thinwalled parts using domain knowledge. Robot ComputIntegr Manuf 2024;88:
+102723. https://doi.org/10.1016/j.rcim.2024.102723.
+[8] Ren Y-Y, Wan M, Zhang W-H, Yang Y. A review on methods for obtaining
+dynamical property parameters of machining processes. Mech Syst Signal Proc
+2023;194:110280. https://doi.org/10.1016/j.ymssp.2023.110280.
+[9] Wang Y, Li M, Zheng L, Shi M, Zheng Z, Pei X. Phyformer: A degradation physicsinformed self-data driven approach to machinery prognostics. Adv Eng Inf 2024;
+62:102772. https://doi.org/10.1016/j.aei.2024.102772.
+[10] Taylor FW. On the art of cutting metals. Trans Asme 1907. https://doi.org/
+10.1038/scientificamerican01121907-25942supp.
+[11] Archard JF. Contact and rubbing of flat surfaces. J Appl Phys 1953;24:981–8.
+https://doi.org/10.1063/1.1721448.
+[12] Usui E, Shirakashi T, Kitagawa T. Analytical prediction of cutting tool wear. Wear
+1984;100:129–51. https://doi.org/10.1016/0043-1648(84)90010-3.
+[13] Kovac P, Gostimirovic M, Rodic D, Savkovic B. Using the temperature method for
+the prediction of tool life in sustainable production. Measurement 2019;133:
+320–7. https://doi.org/10.1016/j.measurement.2018.09.074.
+[14] Iyer KSS, Ukhidave VH. Tool life with speed and time dependent failures. Comput
+Ind 1981;2:141–5. https://doi.org/10.1016/0166-3615(81)90007-5.
+
+Although the method proposed in this paper has been proven to be
+effective in multi-step wear and RUL prediction in the context of tool
+wear, several limitations need to be recognized to further address them
+in subsequent research. Firstly, in actual machining, the dynamic
+changes of cutting parameters have a significant impact on the wear
+process. Future research should consider incorporating cutting param­
+eters into the model input to enhance practicality. Secondly, tool wear
+has multiple manifestations (notch wear, chipping and built-up edge),
+and it is necessary to consider these wear forms in the model to improve
+prediction accuracy. Finally, although the SHAP analysis method can
+reveal feature contributions, it is difficult to represent the wear
+204
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+[15] Lau WS, Venuvinod PK, Rubenstein C. The relation between tool geometry and the
+Taylor Tool Life Constant. Int J Mach Tool Des Res 1980;20:29–44. https://doi.
+org/10.1016/0020-7357(80)90016-5.
+[16] Choudhry J, Almqvist A, Larsson R. Improving Archard’s wear model: an energybased approach. Tribol Lett 2024;72:93. https://doi.org/10.1007/s11249-02401888-8.
+[17] John R, Lin R, Jayaraman K, Bhattacharyya D. Modified Taylor’s equation
+including the effects of fiber characteristics on tool wear when machining natural
+fiber composites. Wear 468469 2021:203606. https://doi.org/10.1016/j.
+wear.2020.203606.
+[18] dos Santos AG, da Silva MB, Jackson MJ. Tungsten carbide micro-tool wear when
+micro milling UNS S32205 duplex stainless steel. Wear 2018;414–415:109–17.
+https://doi.org/10.1016/j.wear.2018.08.007.
+[19] Chen J, Liu W, Deng X, Wu S. Tool life and wear mechanism of
+WC–5TiC–0.5VC–8Co cemented carbides inserts when machining HT250 gray cast
+iron. Ceram Int 2016;42:10037–44. https://doi.org/10.1016/j.
+ceramint.2016.03.107.
+[20] Bai Y, Wang F, Fu R, Hao J, Si L, Zhang B, Liu W, Davim JP. A semi-analytical
+model for predicting tool wear progression in drilling CFRP. Wear 486487 2021:
+204119. https://doi.org/10.1016/j.wear.2021.204119.
+[21] Seeholzer L, Krammer T, Saeedi P, Wegener K. Analytical model for predicting tool
+wear in orthogonal machining of unidirectional carbon fibre reinforced polymer
+(CFRP). Int J Adv Manuf Technol 2022;119:7259–89. https://doi.org/10.1007/
+s00170-021-08322-6.
+[22] Zhang X, Gao Y, Guo Z, Zhang W, Yin J, Zhao W. Physical model-based tool wear
+and breakage monitoring in milling process. Mech Syst Signal Proc 2023;184:
+109641. https://doi.org/10.1016/j.ymssp.2022.109641.
+[23] Kodric M, Korbar J, Pogacar M, Cepon G. Development of a resource-efficient realtime vibration-based tool condition monitoring system using PVDF accelerometers.
+Measurement 2025;251:117183. https://doi.org/10.1016/j.
+measurement.2025.117183.
+[24] Dahmoune O, Meddour I, Elbah M, Atmaneyallese M, Belhadi S. Development of an
+adaptive tool condition monitoring system: integration of case-based reasoning
+with CNN. J Intell Manuf 2025. https://doi.org/10.1007/s10845-025-02566-9.
+[25] Wang J, Liu H, Qi X, Wang Y, Ma W, Zhang S. Tool wear prediction based on SVR
+optimized by hybrid differential evolution and grey wolf optimization algorithms.
+CIRP J Manuf Sci Technol 2024;55:129–40. https://doi.org/10.1016/j.
+cirpj.2024.09.013.
+[26] de Leon MAL, Kolarik J, Byrtus R, Koziorek J, Zmij P, Martinek R. Tool condition
+monitoring methods applicable in the metalworking process. Arch Comput Method
+Eng 2024;31:221–42. https://doi.org/10.1007/s11831-023-09979-w.
+[27] Kuntoglu M, Saglam H. ANOVA and fuzzy rule based evaluation and estimation of
+flank wear, temperature and acoustic emission in turning. CIRP J Manuf Sci
+Technol 2021;35:589–603. https://doi.org/10.1016/j.cirpj.2021.07.011.
+[28] Liu Y-P, Kilic ZM, Altintas Y. Monitoring of in-process force coefficients and tool
+wear. CIRP J Manuf Sci Technol 2022;38:105–19. https://doi.org/10.1016/j.
+cirpj.2022.04.009.
+[29] Yang B, Wang M, Liu Z, Che C, Zan T, Gao X, Gao P. Tool wear process monitoring
+by damping behavior of cutting vibration for milling process. J Manuf Process
+2023;102:1069–84. https://doi.org/10.1016/j.jmapro.2023.07.077.
+[30] Wei X, Liu X, Yue C, Wang L, Liang SY, Qin Y. A multi-sensor signals denoising
+framework for tool state monitoring based on UKF-CycleGAN. Mech Syst Signal
+Process 2023;200:110420. https://doi.org/10.1016/j.ymssp.2023.110420.
+[31] Kullac MT, Cuvalci O. Assessing sine and Gaussian fitting for surface feature
+extraction in real-time wear monitoring of turning operations. CIRP J Manuf Sci
+Technol 2025;61:51–69. https://doi.org/10.1016/j.cirpj.2025.05.005.
+[32] Huang Z, Shao J, Guo W, Li W, Zhu J, He Q, Fang D. Tool wear prediction based on
+multi-information fusion and genetic algorithm-optimized Gaussian process
+regression in milling. IEEE Trans Instrum Meas 2023;72:2516716. https://doi.org/
+10.1109/TIM.2023.3280531.
+[33] Bao C, Yang Y, Xu C. The wear analysis and life prediction of Cr12MoV alloy steel
+hammer dies during the radial forging process. CIRP J Manuf Sci Technol 2025;57:
+63–77. https://doi.org/10.1016/j.cirpj.2025.01.002.
+[34] Liu Z, Lang Z-Q, Gui Y, Zhu Y-P, Laalej H, Curtis D. Vibration signal-based tool
+condition monitoring using regularized sensor data modeling and model frequency
+analysis. IEEE Trans Instrum Meas 2024;73:3505313. https://doi.org/10.1109/
+TIM.2023.3343825.
+[35] Li Y, Wang J, Huang Z, Gao RX. Physics-informed meta learning for machining tool
+wear prediction. J Manuf Syst 2022;62:17–27. https://doi.org/10.1016/j.
+jmsy.2021.10.013.
+[36] Shi C, Luo B, He S, Li K, Liu H, Li B. Tool wear prediction via multidimensional
+stacked sparse autoencoders with feature fusion. IEEE Trans Ind Inf 2020;16:
+5150–9. https://doi.org/10.1109/TII.2019.2949355.
+[37] Wang J, Li Y, Zhao R, Gao RX. Physics guided neural network for machining tool
+wear prediction. J Manuf Syst 2020;57:298–310. https://doi.org/10.1016/j.
+jmsy.2020.09.005.
+[38] Li S, Li J, Zhu K. Application of physics-guided deep learning model in tool wear
+monitoring of high-speed milling. Mech Syst Signal Process 2025;224:111949.
+https://doi.org/10.1016/j.ymssp.2024.111949.
+[39] Li Y, Huang X, Gao T, Zhao C, Li S. A wiener-based remaining useful life prediction
+method with multiple degradation patterns. Adv Eng Inf 2023;57:102066. https://
+doi.org/10.1016/j.aei.2023.102066.
+[40] Li X, Liu X, Yue C, Wang L, Liang SY. Data-model linkage prediction of tool
+remaining useful life based on deep feature fusion and Wiener process. J Manuf
+Syst 2024;73:19–38. https://doi.org/10.1016/j.jmsy.2024.01.008.
+
+[41] Li D, Li Y, Liu C. Gaussian process regression model incorporated with tool wear
+mechanism. Chin J Aeronaut 2022;35:393–400. https://doi.org/10.1016/j.
+cja.2021.08.009.
+[42] Liu Y, Wang T, Sun S, Li Q, Chu F. Physics-informed scaling evolutionary
+transformer for In-Situ Tool condition monitoring. IEEEASME Trans Mechatron
+2024;29:647–58. https://doi.org/10.1109/TMECH.2023.3303202.
+[43] Li S, Lin X, Shi H, Shi Y, Zhu K. Physics-guided deep learning method for tool
+condition monitoring in smart machining system. IEEEASME Trans Mechatron
+2024;29:2327–37. https://doi.org/10.1109/TMECH.2023.3311435.
+[44] Liu Y-P, Kilic ZM, Altintas Y. Monitoring of in-process force coefficients and tool
+wear. CIRP J Manuf Sci Technol 2022;38:105–19. https://doi.org/10.1016/j.
+cirpj.2022.04.009.
+[45] Pashmforoush F, Ebrahimi Araghizad A, Budak E. Tool wear prediction in milling
+process using physics-informed machine learning and thermo-mechanical force
+model with monitoring applications. J Manuf Syst 2025;82:1192–212. https://doi.
+org/10.1016/j.jmsy.2025.08.014.
+[46] Pashmforoush F, Ebrahimi Araghizad A, Budak E. Physics-informed tool wear
+prediction in turning process: A thermo-mechanical wear-included force model
+integrated with machine learning. J Manuf Syst 2024;77:266–83. https://doi.org/
+10.1016/j.jmsy.2024.09.008.
+[47] Sun M, Wang X, Guo K, Huang X, Sun J, Li D, Huang T. Tool wear monitoring based
+on physics-informed Gaussian process regression. J Manuf Syst 2024;77:40–61.
+https://doi.org/10.1016/j.jmsy.2024.09.001.
+[48] Hao Y, Zhu L, Wang J, Shu X, Yong J, Xie Z, Qin S, Pei X, Yan T, Qin Q, Lu H. Ballend tool wear monitoring and multi-step forecasting with multi-modal information
+under variable cutting conditions. J Manuf Syst 2024;76:234–58. https://doi.org/
+10.1016/j.jmsy.2024.08.002.
+[49] Sun M, Han Y, Guo K, Sivalingam V, Huang X, Sun J. A milling tool wear predicting
+method with processing generalization capability. J Manuf Process 2024;120:
+975–1001. https://doi.org/10.1016/j.jmapro.2024.05.022.
+[50] Xue J, Cheng Y, Zhai W, Zhou X, Zhou S. Research on multi-step ahead prediction
+method for tool wear based on MSTCN-SBiGRU-MHA. Adv Eng Inform 2025;65:
+103219. https://doi.org/10.1016/j.aei.2025.103219.
+[51] Hou W, Guo H, Luo L, Jin M. Tool wear prediction based on domain adversarial
+adaptation and channel attention multiscale convolutional long short-term
+memory network. J Manuf Process 2022;84:1339–61. https://doi.org/10.1016/j.
+jmapro.2022.11.017.
+[52] Dutta S, Pal SK, Sen R. Progressive tool flank wear monitoring by applying discrete
+wavelet transform on turned surface images. Measurement 2016;77:388–401.
+https://doi.org/10.1016/j.measurement.2015.09.028.
+[53] Zhu K, Wong YS, Hong GS. Wavelet analysis of sensor signals for tool condition
+monitoring: A review and some new results. Int J Mach Tools Manuf 2009;49:
+537–53. https://doi.org/10.1016/j.ijmachtools.2009.02.003.
+[54] Elsworth S, Guttel S. ABBA: adaptive Brownian bridge-based symbolic aggregation
+of time series. Data Min Knowl Discov 2020;34:1175–200. https://doi.org/
+10.1007/s10618-020-00689-6.
+[55] Wang B, Ning Y, Zhang Y. A novel fault diagnosis scheme for rolling bearing based
+on symbolic aggregate approximation and convolutional neural network with
+channel attention. Meas Sci Technol 2022;33:015016. https://doi.org/10.1088/
+1361-6501/ac319a.
+[56] Zhao D, Liu S, Miao Z, Zhang H, Wei Y, Xiao S. A Novel Feature Extraction
+Approach for Mechanical Fault Diagnosis Based on ESAX and BoW Model. IEEE
+Trans Instrum Meas 2022;71:3516011. https://doi.org/10.1109/
+TIM.2022.3185658.
+[57] Dos Santos ALB, Duarte MAV, Abrão AM, Machado AR. An optimisation procedure
+to determine the coefficients of the extended Taylor’s equation in machining. Int J
+Mach Tools Manuf 1999;39:17–31. https://doi.org/10.1016/S0890-6955(98)
+00025-X.
+[58] Pálmai Z. Proposal for a new theoretical model of the cutting tool’s flank wear.
+Wear 2013;303:437–45. https://doi.org/10.1016/j.wear.2013.03.025.
+[59] Zhu K, Zhang Y. A generic tool wear model and its application to force modeling
+and wear monitoring in high speed milling. Mech Syst Signal Proc 2019;115:
+147–61. https://doi.org/10.1016/j.ymssp.2018.05.045.
+[60] Yuan D, Luo T, Zhang D, Zhu K. A Physics-Assisted Online Learning Method for
+Tool Wear Prediction. IEEE Trans Instrum Meas 2023;72:3515611. https://doi.
+org/10.1109/TIM.2023.3273683.
+[61] Zhu K, Guo H, Li S, Lin X. Physics-Informed Deep Learning for Tool Wear
+Monitoring. IEEE Trans Ind Inf 2024;20:524–33. https://doi.org/10.1109/
+TII.2023.3268407.
+[62] Annual Conference of the Prognostics and Health Management Society 2010, PHM
+Society (n.d.). 〈https://phmsociety.org/conference/annual-conference-of-thephm-society/annual-conference-of-the-prognostics-and-health-management-societ
+y-2010/〉.
+[63] Wei P, Li R, Liu X, Gao H, Dai M, Zhang Y, Zhao W, Liu E. Research on tool wear
+state identification method driven by multi-source information fusion and multidimension attention mechanism. Robot Comput Integr Manuf 2024;88:102741.
+https://doi.org/10.1016/j.rcim.2024.102741.
+[64] Sun J, Liu Z, Wang D, Qiu C, Liu H, Huang K, Tan J. A parallel network model:
+Intelligent monitoring of tool wear under variable working conditions. Robot
+Comput Integr Manuf 2025;96:103065. https://doi.org/10.1016/j.
+rcim.2025.103065.
+[65] Yang Q, Mishra D, Awasthi U, Bollas GM, Pattipati KR. Tool wear and remaining
+useful life estimation in precision machining using interacting multiple model.
+J Manuf Syst 2024;74:367–86. https://doi.org/10.1016/j.jmsy.2024.04.001.
+
+205
+
+S. Jiang et al.
+
+CIRP Journal of Manufacturing Science and Technology 65 (2026) 179–206
+
+[66] Sun M, Guo K, Zhang D, Yang B, Sun J, Li D, Huang T. A novel exponential model
+for tool remaining useful life prediction. J Manuf Syst 2024;73:223–40. https://
+doi.org/10.1016/j.jmsy.2024.01.009.
+[67] Zhao H, Meng J, Peng Q. Early perception of Lithium-ion battery degradation
+trajectory with graphical features and deep learning. Appl Energy 2025;381:
+125214. https://doi.org/10.1016/j.apenergy.2024.125214.
+[68] Wang P, Liu J, Qi J, Zhou K, Zhai H. Multi-task dual-level adversarial transfer
+learning boosted RUL estimation of CNC milling tools. KnowlBased Syst 2025;312:
+113152. https://doi.org/10.1016/j.knosys.2025.113152.
+[69] Nguyen H-P, Liu J, Zio E. A long-term prediction approach based on long shortterm memory neural networks with automatic parameter optimization by Treestructured Parzen Estimator and applied to time-series data of NPP steam
+generators. Appl Soft Comput 2020;89:106116. https://doi.org/10.1016/j.
+asoc.2020.106116.
+[70] Wang H, Bai Q, Zhang J, Chen S, Xu X, Wang T. Tool wear monitoring strategy
+during micro-milling of TC4 alloy based on a fusion model of recursive feature
+elimination-bayesian optimization-extreme gradient boosting. J Mater Res
+TechnolJMRT 2024;31:398–411. https://doi.org/10.1016/j.jmrt.2024.06.076.
+[71] Jiang W, Lin P, Liang Y, Gao H, Zhang D, Hu G. A novel hybrid deep learning model
+for multi-step wind speed forecasting considering pairwise dependencies among
+multiple atmospheric variables. Energy 2023;285:129408. https://doi.org/
+10.1016/j.energy.2023.129408.
+[72] Bi Q, Bai Y, Hou Z, Wang R. Hybrid neural network wind speed prediction based on
+two-level decomposition and weighted averaging. Earth Sci Inf 2024;17:4213–32.
+https://doi.org/10.1007/s12145-024-01388-2.
+
+[73] Qin S, Wang BX, Tsai T-R, Wang X. The prediction of remaining useful lifetime for
+the Weibull k-out-of-n load-sharing system. Reliab Eng Syst Saf 2023;233:109091.
+https://doi.org/10.1016/j.ress.2023.109091.
+[74] Nguinabe J, Rockefeller R, Khan NM, Rodrigues PC. Bootstrap prediction intervals
+for the long short term memory (LSTM) recurrent neural network. Expert Syst Appl
+2025;284:127728. https://doi.org/10.1016/j.eswa.2025.127728.
+[75] Pereira RBD, Gómez-Escudero G, Calleja-Ochoa A, Pereira O, González-Barrio H,
+Brandão LC, de Lacalle LNL. Hybrid cryogenic/MQL helical milling for holemaking of Inconel 718. Results Eng 2025;26:104776. https://doi.org/10.1016/j.
+rineng.2025.104776.
+[76] Khalid OW, Isa NAM, Lim WH. Self-adaptive Emperor Penguin Optimizer with
+multi-strategy parameter adaptation mechanism for complex optimization
+problems. Alex Eng J 2025;120:657–86. https://doi.org/10.1016/j.
+aej.2025.02.046.
+[77] Ding G, Georgilas I, Plummer A, Ding G, Georgilas I, Plummer A. A deep learning
+model with a self-attention mechanism for leg joint angle estimation across varied
+locomotion modes. Sensors 2023;24. https://doi.org/10.3390/s24010211.
+[78] Alostad J, Alazmi FE, Alfayly A, Alshehab AJ. Detection of fault events in software
+tools integrated with human-computer interface using machine learning. Appl Sci
+Basel 2025;15:10030. https://doi.org/10.3390/app151810030.
+[79] Lundberg SM, Lee S-I. A unified approach to interpreting model predictions. In:
+Proceedings of the 31st International Conference on Neural Information Processing
+Systems. Red Hook, NY, USA: Curran Associates Inc; 2017. p. 4768–77.
+
+206
+
+
