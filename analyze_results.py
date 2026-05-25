@@ -1,41 +1,74 @@
 import numpy as np
 import os
 import json
+import argparse
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
+def load_preprocessed_data(data_dir):
+    """从 run_pipeline.py 生成的 .npz 缓存中加载预处理数据和标签"""
+    npz_files = [f for f in os.listdir(data_dir) if f.endswith('.npz')]
+    
+    if len(npz_files) == 0:
+        print(f"未找到数据文件: {data_dir}")
+        return None, None
+    
+    signals = []
+    labels = []
+    tool_ids = []
+    
+    for f in npz_files:
+        try:
+            data = np.load(os.path.join(data_dir, f), allow_pickle=True)
+            processed_signal = data['processed_signal']
+            wear_label = np.array([data['wear_label_flute_1'], 
+                                   data['wear_label_flute_2'], 
+                                   data['wear_label_flute_3']])
+            
+            signals.append(processed_signal)
+            labels.append(wear_label)
+            tool_ids.append(data['tool_id'])
+        except Exception as e:
+            print(f"加载文件失败 {f}: {e}")
+    
+    return signals, np.array(labels)
+
 def analyze_stage3_results(result_dir):
-    stage3_dir = os.path.join(result_dir, 'data', 'cache', 'stage3_dataset_creation')
+    stage3_dir = os.path.join(result_dir, 'data')
     if not os.path.exists(stage3_dir):
         print(f"Stage3目录不存在: {stage3_dir}")
         return None
     
-    npy_files = [f for f in os.listdir(stage3_dir) if f.endswith('.npy')]
+    npz_files = [f for f in os.listdir(stage3_dir) if f.endswith('.npz')]
     print(f"\nStage3 预处理结果分析:")
-    print(f"  样本数: {len(npy_files)}")
+    print(f"  样本数: {len(npz_files)}")
     
-    if len(npy_files) == 0:
+    if len(npz_files) == 0:
         return None
     
-    sample_file = npy_files[0]
+    sample_file = npz_files[0]
     sample_data = np.load(os.path.join(stage3_dir, sample_file), allow_pickle=True)
+    sample_signal = sample_data['processed_signal']
     
-    print(f"  样本 {sample_file} 形状: {sample_data.shape}")
-    print(f"  样本 dtype: {sample_data.dtype}")
-    print(f"  通道数: {sample_data.shape[1]}")
-    print(f"  采样点数: {sample_data.shape[0]}")
+    print(f"  样本 {sample_file} 形状: {sample_signal.shape}")
+    print(f"  样本 dtype: {sample_signal.dtype}")
+    print(f"  通道数: {sample_signal.shape[1]}")
+    print(f"  采样点数: {sample_signal.shape[0]}")
     print(f"  统计信息:")
-    for i in range(min(7, sample_data.shape[1])):
-        ch_data = sample_data[:, i]
+    for i in range(min(7, sample_signal.shape[1])):
+        ch_data = sample_signal[:, i]
         print(f"    通道{i+1}: min={ch_data.min():.4f}, max={ch_data.max():.4f}, mean={ch_data.mean():.4f}, std={ch_data.std():.4f}")
     
-    return sample_data
+    return sample_signal
 
 def analyze_stage4_results(run_id):
-    stage4_dir = os.path.join('data', 'interim', 'features', run_id)
+    stage4_dir = os.path.join('results', run_id, 'cache', 'features')
+    if not os.path.exists(stage4_dir):
+        stage4_dir = os.path.join('data', 'interim', 'features', run_id)
+    
     if not os.path.exists(stage4_dir):
         print(f"Stage4目录不存在: {stage4_dir}")
         return None
@@ -46,26 +79,40 @@ def analyze_stage4_results(run_id):
         return None
     
     features_list = []
+    labels_list = []
     
     for f in npy_files:
-        data = np.load(os.path.join(stage4_dir, f), allow_pickle=True)
-        features_list.append(data)
+        try:
+            data = np.load(os.path.join(stage4_dir, f), allow_pickle=True)
+            features_list.append(data)
+            
+            meta_file = f.replace('features_', 'meta_')
+            meta_path = os.path.join(stage4_dir, meta_file)
+            if os.path.exists(meta_path):
+                meta = np.load(meta_path, allow_pickle=True)
+                labels_list.append(meta.get('wear_label', np.zeros(3)))
+        except Exception as e:
+            print(f"加载文件失败 {f}: {e}")
     
     if len(features_list) == 0:
         print("Stage4没有找到有效特征数据")
         return None
     
     features = np.array(features_list)
+    labels = np.array(labels_list) if labels_list else None
     
     print(f"\nStage4 特征提取结果分析:")
     print(f"  特征文件数: {len(npy_files)}")
     print(f"  特征形状: {features.shape}")
     print(f"  特征统计: min={features.min():.4f}, max={features.max():.4f}, mean={features.mean():.4f}, std={features.std():.4f}")
     
-    return features, None
+    return features, labels
 
 def analyze_stage5_results(run_id):
-    stage5_dir = os.path.join('data', 'interim', 'samples', run_id)
+    stage5_dir = os.path.join('results', run_id, 'cache', 'samples')
+    if not os.path.exists(stage5_dir):
+        stage5_dir = os.path.join('data', 'interim', 'samples', run_id)
+    
     features_file = os.path.join(stage5_dir, 'augmented_features.npy')
     labels_file = os.path.join(stage5_dir, 'augmented_labels.npy')
     
@@ -103,6 +150,12 @@ def analyze_stage6_results(result_dir):
         print(f"  {f}: {size:.2f} MB")
     print(f"  总大小: {total_size:.2f} MB")
     
+    meta_file = os.path.join(tfrecord_dir, 'dataset_meta.json')
+    if os.path.exists(meta_file):
+        with open(meta_file, 'r') as f:
+            meta = json.load(f)
+        print(f"  数据集元信息: {json.dumps(meta, indent=4, ensure_ascii=False)}")
+    
     return tfrecord_files
 
 def plot_signal_waveform(signal_data, output_path):
@@ -111,7 +164,7 @@ def plot_signal_waveform(signal_data, output_path):
     fig, axes = plt.subplots(rows, 2, figsize=(14, rows * 3))
     axes = axes.flatten()
     
-    channel_names = ['X_acc', 'Y_acc', 'Z_acc', 'X_force', 'Y_force', 'Z_force', 'Spindle']
+    channel_names = ['X_force', 'Y_force', 'Z_force', 'X_vib', 'Y_vib', 'Z_vib', 'AE']
     
     for i in range(n_channels):
         axes[i].plot(signal_data[:1000, i], linewidth=0.5)
@@ -157,11 +210,11 @@ def plot_tsne_visualization(features, labels, output_path):
     
     fig, ax = plt.subplots(figsize=(10, 8))
     
-    if labels is not None:
+    if labels is not None and len(labels) > 0:
         sample_labels = labels[indices]
         wear_levels = sample_labels[:, 0]
         scatter = ax.scatter(tsne_result[:, 0], tsne_result[:, 1], c=wear_levels, cmap='viridis', alpha=0.6)
-        plt.colorbar(scatter, label='Wear Level')
+        plt.colorbar(scatter, label='Wear Level (Flute 1)')
     else:
         ax.scatter(tsne_result[:, 0], tsne_result[:, 1], alpha=0.6)
     
@@ -198,15 +251,21 @@ def plot_class_distribution(labels, stage_name, output_path):
     print(f"    类别分布图已保存")
 
 def main():
-    result_dir = 'results/run_007_20260524_2111'
-    run_id = 'run_007_20260524_2111'
+    parser = argparse.ArgumentParser(description='PHM2010 处理结果分析')
+    parser.add_argument('--run-id', type=str, default='production_run_20260525',
+                        help='运行ID (default: production_run_20260525)')
+    args = parser.parse_args()
+    
+    run_id = args.run_id
+    result_dir = os.path.join('results', run_id)
     
     if not os.path.exists(result_dir):
         print(f"结果目录不存在: {result_dir}")
         return
     
     print("="*60)
-    print("PHM2010 数据集处理流水线结果质量分析")
+    print(f"PHM2010 数据集处理流水线结果质量分析")
+    print(f"Run ID: {run_id}")
     print("="*60)
     
     stage3_data = analyze_stage3_results(result_dir)
@@ -246,11 +305,20 @@ def main():
     print("-" * 40)
     print("| Stage | 样本数 | 状态 |")
     print("|-------|--------|------|")
-    stage3_count = len([f for f in os.listdir(os.path.join(result_dir, 'data', 'cache', 'stage3_dataset_creation')) if f.endswith('.npy')])
-    stage4_count = len([f for f in os.listdir(os.path.join('data', 'interim', 'features', run_id)) if f.endswith('.npy')]) if os.path.exists(os.path.join('data', 'interim', 'features', run_id)) else 0
-    print(f"| Stage1 | 975 | OK |")
-    print(f"| Stage2 | 975 | OK |")
-    print(f"| Stage3 | {stage3_count} | OK |")
+    
+    data_dir = os.path.join(result_dir, 'data')
+    stage3_count = len([f for f in os.listdir(data_dir) if f.endswith('.npz')]) if os.path.exists(data_dir) else 0
+    
+    stage4_dir1 = os.path.join('results', run_id, 'cache', 'features')
+    stage4_dir2 = os.path.join('data', 'interim', 'features', run_id)
+    if os.path.exists(stage4_dir1):
+        stage4_count = len([f for f in os.listdir(stage4_dir1) if f.endswith('.npy') and f.startswith('features_')])
+    elif os.path.exists(stage4_dir2):
+        stage4_count = len([f for f in os.listdir(stage4_dir2) if f.endswith('.npy') and f.startswith('features_')])
+    else:
+        stage4_count = 0
+    
+    print(f"| Stage1-3 | {stage3_count} | OK |")
     print(f"| Stage4 | {stage4_count} | OK |")
     print(f"| Stage5 | {stage5_result[0].shape[0] if stage5_result else 0} | OK |")
     print(f"| Stage6 | {len(stage6_files) if stage6_files else 0} files | OK |")

@@ -163,12 +163,21 @@ class DataPipeline:
         output_path = self.data_dir / f"{cut_unique_id}.npz"
 
         try:
+            filter_params = preprocessed_data.get('filter_params', {})
+            filter_mean = filter_params.get('mean', np.array([]))
+            filter_std = filter_params.get('std', np.array([]))
+
             np.savez(
                 output_path,
                 processed_signal=preprocessed_data['processed_signal'],
                 tool_id=preprocessed_data['tool_id'],
-                wear_label=json.dumps(preprocessed_data['wear_label']),
-                filter_params=json.dumps(preprocessed_data['filter_params']),
+                wear_label_flute_1=preprocessed_data['wear_label']['flute_1'],
+                wear_label_flute_2=preprocessed_data['wear_label']['flute_2'],
+                wear_label_flute_3=preprocessed_data['wear_label']['flute_3'],
+                wear_label_robust_wear=preprocessed_data['wear_label']['robust_wear'],
+                wear_label_wear_stage=preprocessed_data['wear_label']['wear_stage'],
+                filter_mean=filter_mean,
+                filter_std=filter_std,
                 status=preprocessed_data.get('status', 'PROCESSED')
             )
             return True

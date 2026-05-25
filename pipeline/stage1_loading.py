@@ -56,6 +56,84 @@ class Stage1Loader:
         """
         return self.raw_data_dir / tool_id / f"{tool_id}_wear.csv"
 
+    def _calculate_robust_wear(self, flute_values: list) -> float:
+        values = np.array(flute_values, dtype=np.float64)
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+
+        if std_val == 0:
+            return mean_val
+
+        confidence = 1 - np.abs(values - mean_val) / (3 * std_val)
+        confidence = np.clip(confidence, 0.1, 1.0)
+        weights = confidence / np.sum(confidence)
+        robust_wear = np.sum(values * weights)
+
+        return float(robust_wear)
+
+    def _compute_wear_stages(self, tool_id: str, wear_data: dict) -> dict:
+        from sklearn.mixture import GaussianMixture
+
+        sorted_cuts = sorted(wear_data.keys())
+
+        wear_values = np.array([
+            wear_data[cut]['robust_wear']
+            for cut in sorted_cuts
+        ], dtype=np.float64).reshape(-1, 1)
+
+        gmm = GaussianMixture(
+            n_components=3,
+            covariance_type='full',
+            random_state=42,
+            max_iter=100
+        )
+
+        try:
+            gmm.fit(wear_values)
+            labels = gmm.predict(wear_values)
+        except Exception as e:
+            self.logger.warn(
+                f"EM算法计算失败，使用固定阈值划分: {tool_id}",
+                tool_id, e
+            )
+            return self._fallback_wear_stages(wear_data)
+
+        means = gmm.means_.flatten()
+        stage_order = np.argsort(means)
+        stage_names = ['initial', 'normal', 'severe']
+
+        result = {}
+        for cut_num, label in zip(sorted_cuts, labels):
+            stage_idx = np.where(stage_order == label)[0][0]
+            result[cut_num] = stage_names[stage_idx]
+
+        self.logger.info(
+            f"EM阶段划分完成: {tool_id}, "
+            f"initial={sum(1 for v in result.values() if v == 'initial')}, "
+            f"normal={sum(1 for v in result.values() if v == 'normal')}, "
+            f"severe={sum(1 for v in result.values() if v == 'severe')}",
+            tool_id
+        )
+
+        return result
+
+    def _fallback_wear_stages(self, wear_data: dict) -> dict:
+        THRESHOLD_LOW = 50.0
+        THRESHOLD_HIGH = 150.0
+
+        result = {}
+        for cut_num, data in wear_data.items():
+            robust_wear = data['robust_wear']
+
+            if robust_wear < THRESHOLD_LOW:
+                result[cut_num] = 'initial'
+            elif robust_wear < THRESHOLD_HIGH:
+                result[cut_num] = 'normal'
+            else:
+                result[cut_num] = 'severe'
+
+        return result
+
     def load_wear_labels(self, tool_id: str) -> dict[int, dict[str, float]]:
         """加载指定刀具的磨损标签
 
@@ -63,7 +141,7 @@ class Stage1Loader:
             tool_id: 刀具ID (c1/c4/c6)
 
         Returns:
-            {cut_num: {flute_1: float, flute_2: float, flute_3: float}}
+            {cut_num: {flute_1, flute_2, flute_3, robust_wear, wear_stage}}
         """
         if tool_id in self._wear_cache:
             return self._wear_cache[tool_id]
@@ -88,13 +166,26 @@ class Stage1Loader:
                         continue
                     try:
                         cut_num = int(parts[0])
+                        flute_1 = float(parts[1])
+                        flute_2 = float(parts[2])
+                        flute_3 = float(parts[3])
+
+                        robust_wear = self._calculate_robust_wear([flute_1, flute_2, flute_3])
+
                         wear_data[cut_num] = {
-                            'flute_1': float(parts[1]),
-                            'flute_2': float(parts[2]),
-                            'flute_3': float(parts[3])
+                            'flute_1': flute_1,
+                            'flute_2': flute_2,
+                            'flute_3': flute_3,
+                            'robust_wear': robust_wear
                         }
                     except (ValueError, IndexError):
                         continue
+
+            if len(wear_data) > 0:
+                stage_mapping = self._compute_wear_stages(tool_id, wear_data)
+                for cut_num, stage in stage_mapping.items():
+                    if cut_num in wear_data:
+                        wear_data[cut_num]['wear_stage'] = stage
 
             self._wear_cache[tool_id] = wear_data
             self.logger.info(f"Loaded {len(wear_data)} wear labels for {tool_id}", tool_id)

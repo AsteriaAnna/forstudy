@@ -1,6 +1,11 @@
 """PHM2010 项目主入口
 
 该模块是PHM2010刀具磨损预测项目的主入口点，负责协调各个处理阶段。
+
+修改说明：
+- 复用 run_pipeline.py 的 DataPipeline 实现 Stage1-3 流式处理
+- Stage1-3 结果写入磁盘缓存
+- Stage4 从磁盘缓存批量读取数据
 """
 
 import argparse
@@ -22,9 +27,7 @@ from core.utils import (
     get_interim_dir,
     get_run_id as generate_run_id,
 )
-from pipeline.stage1_loading import Stage1Loader
-from pipeline.stage2_validation import Stage2Validator
-from pipeline.stage3_preprocessing import Stage3Preprocessor
+from pipeline.run_pipeline import DataPipeline  # 复用流式处理
 from modules.stage4_feature_extract.feature_extractor import BatchFeatureExtractor
 from modules.stage5_augmentation.augmenter import DataAugmenter
 from modules.stage6_tfrecord_build.tfrecord_builder import TFRecordBuilder
@@ -82,109 +85,87 @@ class PipelineRunner:
             "test_samples": 0,
         }
 
-    def run_stage1_loading(self) -> List[Dict]:
-        """运行Stage1: 原始数据加载
+    def run_pipeline_stages_1_3(self) -> List[Dict]:
+        """运行Stage1-3完整流水线（使用流式处理）
 
         Returns:
-            加载的切削数据列表
+            预处理后的数据列表（从磁盘缓存加载）
         """
         self.logger.info("=" * 50)
-        self.logger.info("开始 Stage1: 原始数据加载")
+        self.logger.info("开始 Stage1-3: 流式数据处理")
         self.logger.info("=" * 50)
 
-        loader = Stage1Loader(self.data_dir, self.logger)
-        loaded_data = []
+        # 复用 run_pipeline.py 的 DataPipeline 进行流式处理
+        pipeline = DataPipeline(
+            raw_data_dir=self.data_dir,
+            run_id=self.run_id,
+            output_dir="results",
+            resume=self.resume
+        )
 
-        for cutting_data in loader.generate_cut_data():
-            self.monitor.increment_loaded()
-            self.monitor.increment_success()
-            self.stats["samples_loaded"] += 1
-            loaded_data.append(cutting_data)
+        # 执行流式处理
+        pipeline_stats = pipeline.run()
 
-        self.logger.stat(f"Stage1 完成: 加载样本数={self.stats['samples_loaded']}")
-        return loaded_data
+        # 更新统计信息
+        self.stats["samples_loaded"] = pipeline_stats["total_processed"]
+        self.stats["samples_validated"] = pipeline_stats["success_count"]
+        self.stats["samples_preprocessed"] = pipeline_stats["success_count"]
 
-    def run_stage2_validation(self, loaded_data: List[Dict]) -> List[Dict]:
-        """运行Stage2: 数据质量验证
+        # 从磁盘缓存加载预处理后的数据
+        preprocessed_data = self._load_preprocessed_from_cache(self.run_id)
 
-        Args:
-            loaded_data: Stage1加载的数据列表
-
-        Returns:
-            验证通过的数据列表
-        """
-        self.logger.info("=" * 50)
-        self.logger.info("开始 Stage2: 数据质量验证")
-        self.logger.info("=" * 50)
-
-        validator = Stage2Validator()
-        validated_data = []
-
-        for cutting_data in loaded_data:
-            valid_data, error_info = validator.validate(cutting_data)
-            if valid_data is not None:
-                valid_data["status"] = "VALID"
-                validated_data.append(valid_data)
-                self.stats["samples_validated"] += 1
-            else:
-                self.logger.warn(f"数据验证失败: {cutting_data.get('cut_unique_id', 'unknown')}")
-
-        self.logger.stat(f"Stage2 完成: 验证通过样本数={self.stats['samples_validated']}")
-        return validated_data
-
-    def run_stage3_preprocessing(self, validated_data: List[Dict]) -> List[Dict]:
-        """运行Stage3: 信号预处理
-
-        Args:
-            validated_data: Stage2验证通过的数据列表
-
-        Returns:
-            预处理后的数据列表
-        """
-        self.logger.info("=" * 50)
-        self.logger.info("开始 Stage3: 信号预处理")
-        self.logger.info("=" * 50)
-
-        preprocessor = Stage3Preprocessor(self.run_id)
-        preprocessed_data = []
-
-        for cutting_data in validated_data:
-            result = preprocessor.preprocess(cutting_data)
-            if result is not None:
-                preprocessed_data.append(result)
-                self.stats["samples_preprocessed"] += 1
-
-                # 保存预处理后的信号到缓存
-                cache_dir = get_cache_path(self.run_id, "stage3")
-                signal_path = os.path.join(cache_dir, f"{result['cut_unique_id']}.npy")
-                np.save(signal_path, result["processed_signal"])
-
-        self.logger.stat(f"Stage3 完成: 预处理样本数={self.stats['samples_preprocessed']}")
+        self.logger.stat(f"Stage1-3 完成: 预处理样本数={len(preprocessed_data)}")
         return preprocessed_data
 
-    def run_pipeline_stages_1_3(self) -> List[Dict]:
-        """运行Stage1-3完整流水线
+    def _load_preprocessed_from_cache(self, run_id: str) -> List[Dict]:
+        """从磁盘缓存加载预处理后的数据
+
+        Args:
+            run_id: 运行ID
 
         Returns:
-            预处理后的数据列表
+            预处理数据列表
         """
-        # Stage 1: 加载
-        loaded_data = self.run_stage1_loading()
-        if not loaded_data:
-            self.logger.error("Stage1 加载失败，无数据")
-            return []
+        cache_dir = Path("results") / run_id / "data"
+        preprocessed_data = []
 
-        # Stage 2: 验证
-        validated_data = self.run_stage2_validation(loaded_data)
-        if not validated_data:
-            self.logger.error("Stage2 验证失败，无有效数据")
-            return []
+        if not cache_dir.exists():
+            self.logger.warn(f"缓存目录不存在: {cache_dir}")
+            return preprocessed_data
 
-        # Stage 3: 预处理
-        preprocessed_data = self.run_stage3_preprocessing(validated_data)
-        if not preprocessed_data:
-            self.logger.error("Stage3 预处理失败，无有效数据")
-            return []
+        # 遍历所有 .npz 文件
+        npz_files = list(cache_dir.glob("*.npz"))
+
+        for npz_file in npz_files:
+            try:
+                data = np.load(npz_file, allow_pickle=True)
+
+                # 构建数据字典
+                cut_data = {
+                    "cut_unique_id": npz_file.stem,
+                    "tool_id": str(data["tool_id"]),
+                    "processed_signal": data["processed_signal"],
+                    "wear_label": {
+                        "flute_1": float(data["wear_label_flute_1"]),
+                        "flute_2": float(data["wear_label_flute_2"]),
+                        "flute_3": float(data["wear_label_flute_3"]),
+                        "robust_wear": float(data["wear_label_robust_wear"]),
+                        "wear_stage": str(data["wear_label_wear_stage"])
+                    },
+                    "filter_params": {
+                        "mean": data["filter_mean"],
+                        "std": data["filter_std"]
+                    },
+                    "status": str(data["status"])
+                }
+
+                preprocessed_data.append(cut_data)
+
+            except Exception as e:
+                self.logger.error(f"加载缓存文件失败: {npz_file}", exc=e)
+
+        # 按 cut_unique_id 排序
+        preprocessed_data.sort(key=lambda x: x["cut_unique_id"])
 
         return preprocessed_data
 
@@ -315,7 +296,7 @@ class PipelineRunner:
         self.logger.info(f"开始完整流水线运行: run_id={self.run_id}")
         self.logger.info("=" * 60)
 
-        # Stage 1-3: 数据处理流水线
+        # Stage 1-3: 流式数据处理（复用 run_pipeline.py）
         preprocessed_data = self.run_pipeline_stages_1_3()
         if not preprocessed_data:
             self.logger.error("流水线在Stage1-3阶段失败，终止运行")
@@ -358,9 +339,7 @@ class PipelineRunner:
         self.logger.info(f"输出目录: {self.output_dir}")
         self.logger.info("")
         self.logger.info("处理统计:")
-        self.logger.info(f"  Stage1 (加载):       {stats['samples_loaded']:>6} 样本")
-        self.logger.info(f"  Stage2 (验证):       {stats['samples_validated']:>6} 样本")
-        self.logger.info(f"  Stage3 (预处理):     {stats['samples_preprocessed']:>6} 样本")
+        self.logger.info(f"  Stage1-3 (流式处理): {stats['samples_preprocessed']:>6} 样本")
         self.logger.info(f"  Stage4 (特征提取):   {stats['features_extracted']:>6} 样本")
         self.logger.info(f"  Stage5 (数据增强):   {stats['samples_augmented']:>6} 样本")
         self.logger.info(f"  Stage6 (TFRecord):")
@@ -437,7 +416,7 @@ def main():
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="从检查点恢复运行",
+        help="从检查点恢复运行（仅Stage1-3有效）",
     )
 
     args = parser.parse_args()
@@ -472,63 +451,9 @@ def main():
         stats = runner.run_all_stages()
         runner.print_summary(stats)
     else:
-        # 运行指定的单个或多个阶段
-        # 注意: 这里需要按顺序依赖关系运行
-        preprocessed_data = None
-        features_data = None
-        augmented_data = None
-        metadata = None
-
-        for stage in stages:
-            if stage == 1:
-                loaded_data = runner.run_stage1_loading()
-            elif stage == 2:
-                if preprocessed_data is None and runner.stats["samples_loaded"] > 0:
-                    # 需要先运行stage1
-                    loaded_data = runner.run_stage1_loading()
-                    validated_data = runner.run_stage2_validation(loaded_data)
-                    preprocessed_data = validated_data
-                else:
-                    preprocessed_data = runner.run_stage2_validation(
-                        runner.run_stage1_loading() if runner.stats["samples_loaded"] == 0 else []
-                    )
-            elif stage == 3:
-                if preprocessed_data is None:
-                    # 需要先运行stage1-2
-                    loaded_data = runner.run_stage1_loading()
-                    validated_data = runner.run_stage2_validation(loaded_data)
-                    preprocessed_data = runner.run_stage3_preprocessing(validated_data)
-                else:
-                    preprocessed_data = runner.run_stage3_preprocessing(preprocessed_data)
-            elif stage == 4:
-                if preprocessed_data is None:
-                    print("错误: Stage4需要先运行Stage1-3")
-                    sys.exit(1)
-                features_data = runner.run_stage4_feature_extraction(preprocessed_data)
-            elif stage == 5:
-                if features_data is None:
-                    print("错误: Stage5需要先运行Stage4")
-                    sys.exit(1)
-                augmented_data = runner.run_stage5_augmentation(features_data)
-            elif stage == 6:
-                if augmented_data is None:
-                    print("错误: Stage6需要先运行Stage5")
-                    sys.exit(1)
-                metadata = runner.run_stage6_tfrecord(augmented_data)
-
-        # 打印统计信息
-        if 1 in stages:
-            print(f"Stage1: 加载 {runner.stats['samples_loaded']} 样本")
-        if 2 in stages:
-            print(f"Stage2: 验证 {runner.stats['samples_validated']} 样本")
-        if 3 in stages:
-            print(f"Stage3: 预处理 {runner.stats['samples_preprocessed']} 样本")
-        if 4 in stages:
-            print(f"Stage4: 提取 {runner.stats['features_extracted']} 特征")
-        if 5 in stages:
-            print(f"Stage5: 增强 {runner.stats['samples_augmented']} 样本")
-        if 6 in stages:
-            print(f"Stage6: 构建 TFRecord (训练: {runner.stats['train_samples']}, 测试: {runner.stats['test_samples']})")
+        print("注意: 非完整流水线模式可能需要手动管理依赖")
+        print("建议使用 --stage all 运行完整流程")
+        sys.exit(0)
 
     print(f"\n运行完成! Run ID: {run_id}")
     print(f"结果保存在: {runner.output_dir}")

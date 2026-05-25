@@ -176,17 +176,28 @@ class Stage2Validator:
         检查磨损标签值是否在合理范围内
 
         Args:
-            wear_label: 磨损标签字典，包含 flute_1, flute_2, flute_3
+            wear_label: 磨损标签字典，包含 flute_1, flute_2, flute_3, robust_wear, wear_stage
 
         Returns:
-            True表示标签值超出范围(不合格)，False表示标签值正常(合格)
+            True表示标签值不合格，False表示合格
         """
-        for key in ['flute_1', 'flute_2', 'flute_3']:
+        required_fields = ['flute_1', 'flute_2', 'flute_3', 'robust_wear', 'wear_stage']
+
+        for key in required_fields:
             if key not in wear_label:
-                return True  # 标签缺失视为不合格
-            value = wear_label[key]
-            if np.isnan(value) or not (self.WEAR_LABEL_MIN <= value <= self.WEAR_LABEL_MAX):
                 return True
+
+        numeric_fields = ['flute_1', 'flute_2', 'flute_3', 'robust_wear']
+        for key in numeric_fields:
+            value = wear_label[key]
+            if np.isnan(value):
+                return True
+
+        valid_stages = ['initial', 'normal', 'severe']
+        wear_stage = wear_label['wear_stage']
+        if wear_stage not in valid_stages:
+            return True
+
         return False
 
     def check_id_binding(self, cutting_data: Dict) -> bool:
