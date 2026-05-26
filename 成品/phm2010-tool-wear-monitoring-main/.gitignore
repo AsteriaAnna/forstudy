@@ -1,0 +1,11 @@
+# Jupyter
+.ipynb_checkpoints/
+*.pyc
+__pycache__/
+
+# Data files too large for GitHub
+data/raw/
+
+# Environment
+.env
+*.log
