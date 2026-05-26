@@ -13,19 +13,17 @@ from scipy import stats
 from scipy.fft import fft
 from scipy.signal import find_peaks
 
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.logger import Logger
 from core.utils import ensure_dir, get_interim_dir
 
 
 class FeatureExtractor:
     """多域特征提取器
-    
-    从7通道预处理信号中提取168维特征向量
+
+    从7通道预处理信号中提取175维特征向量
     - 时域特征: 15个/通道
     - 频域特征: 5个/通道
-    - 时频域特征: 4个/通道
+    - 时频域特征: 5个/通道 (4层能量 + 小波熵)
     """
     
     # 通道名称
@@ -37,9 +35,9 @@ class FeatureExtractor:
     # 频域特征数量
     NUM_FREQ_FEATURES = 5
     # 时频域特征数量
-    NUM_TIME_FREQ_FEATURES = 4
+    NUM_TIME_FREQ_FEATURES = 5
     # 总特征数量
-    TOTAL_FEATURES = NUM_CHANNELS * (NUM_TIME_FEATURES + NUM_FREQ_FEATURES + NUM_TIME_FREQ_FEATURES)  # 168
+    TOTAL_FEATURES = NUM_CHANNELS * (NUM_TIME_FEATURES + NUM_FREQ_FEATURES + NUM_TIME_FREQ_FEATURES)  # 175
     
     def __init__(self, run_id: str, logger: Optional[Logger] = None):
         """初始化特征提取器
@@ -253,8 +251,9 @@ class FeatureExtractor:
         fft_magnitude = np.abs(fft_vals[:n//2])
         fft_magnitude = fft_magnitude / (n + 1e-10)  # 归一化
         
-        # 频率轴
-        freqs = np.arange(len(fft_magnitude)) / n
+        # 频率轴 - 使用真实物理频率 (PHM2010采样频率为20000Hz)
+        fs = 20000
+        freqs = np.fft.fftfreq(n, 1/fs)[:n//2]
         
         # 1. spectral_mean - 频谱均值
         spectral_mean = np.mean(fft_magnitude)
@@ -341,34 +340,39 @@ class FeatureExtractor:
         
         features = []
         
-        # 计算每层能量
-        total_energy = np.sum(x**2) + 1e-10
-        
-        # 细节系数能量 (从高层到低层)
+        # 细节系数能量 (从高层到低层)，直接使用系数平方和，不归一化
         for i in range(actual_level - 1, -1, -1):
             cD_energy = np.sum(coeffs[i + 1]**2)
-            features.append(cD_energy / total_energy)
+            features.append(cD_energy)
         
         # 如果实际层数不足4层，用0填充
         while len(features) < 4:
             features.append(0.0)
+
+        # 计算小波熵 (wavelet_entropy)
+        # 使用所有系数的归一化能量分布计算熵
+        all_coeffs = []
+        for c in coeffs:
+            all_coeffs.extend(c.flatten())
+        all_coeffs = np.array(all_coeffs)
         
-        # 取前4个能量特征
-        energy_features = features[:4]
+        # 计算各系数的能量
+        energy_array = all_coeffs ** 2
+        total_energy = np.sum(energy_array)
         
-        # 小波熵
-        all_coeffs = np.concatenate([c for c in coeffs])
-        coeffs_norm = np.abs(all_coeffs) / (np.sum(np.abs(all_coeffs)) + 1e-10)
-        coeffs_norm = coeffs_norm[coeffs_norm > 0]
-        if len(coeffs_norm) > 0:
-            wavelet_entropy = -np.sum(coeffs_norm * np.log(coeffs_norm + 1e-10))
+        if total_energy > 1e-10:
+            # 归一化能量分布
+            p = energy_array / total_energy
+            # 移除零值避免 log(0)
+            p = p[p > 1e-10]
+            # 计算熵 (使用log2为单位)
+            wavelet_entropy = -np.sum(p * np.log2(p + 1e-10))
         else:
             wavelet_entropy = 0.0
         
-        # 按规格4个每通道，我们取能量特征(4个)
-        # 实际规格说4个: 可能是指能量4个，不含熵
-        # 或者理解为: 4层能量(4个)
-        return energy_features
+        features.append(wavelet_entropy)
+
+        return features
     
     def validate_features(self, features: np.ndarray) -> bool:
         """验证特征向量的合法性
@@ -403,9 +407,9 @@ class FeatureExtractor:
     
     def get_feature_names(self) -> List[str]:
         """获取特征名称列表
-        
+
         Returns:
-            168个特征名称列表
+            175个特征名称列表
         """
         time_feature_names = [
             'mean', 'variance', 'std', 'rms', 'peak_to_peak',
@@ -421,7 +425,8 @@ class FeatureExtractor:
         
         timefreq_feature_names = [
             'wavelet_energy_level1', 'wavelet_energy_level2',
-            'wavelet_energy_level3', 'wavelet_energy_level4'
+            'wavelet_energy_level3', 'wavelet_energy_level4',
+            'wavelet_entropy'
         ]
         
         feature_names = []
@@ -457,17 +462,54 @@ class FeatureExtractor:
 class BatchFeatureExtractor:
     """批量特征提取器"""
     
-    def __init__(self, run_id: str, logger: Optional[Logger] = None):
+    def __init__(
+        self, 
+        run_id: str, 
+        logger: Optional[Logger] = None,
+        normalization_method: Optional[str] = None,
+        feature_selector=None
+    ):
         """初始化批量特征提取器
         
         Args:
             run_id: 运行唯一标识符
             logger: 日志记录器实例
+            normalization_method: 归一化方法，'standard' 或 'minmax'，None表示不进行归一化
+            feature_selector: 特征选择器实例（如CVOCA），None表示不进行特征选择
         """
         self.run_id = run_id
         self.logger = logger or Logger(run_id)
         self.extractor = FeatureExtractor(run_id, logger)
         self._results = []
+        
+        # 归一化相关
+        self.normalization_method = normalization_method
+        self.scaler = self._create_scaler(normalization_method)
+        
+        # 特征选择相关
+        self.feature_selector = feature_selector
+        self.selected_indices = None
+    
+    def _create_scaler(self, normalization_method: Optional[str]):
+        """创建归一化器
+        
+        Args:
+            normalization_method: 归一化方法
+            
+        Returns:
+            归一化器实例或None
+        """
+        if normalization_method is None:
+            return None
+        
+        from sklearn.preprocessing import StandardScaler, MinMaxScaler
+        
+        if normalization_method == 'standard':
+            return StandardScaler()
+        elif normalization_method == 'minmax':
+            return MinMaxScaler()
+        else:
+            raise ValueError(f"未知的归一化方法: {normalization_method}")
     
     def process_batch(
         self,
@@ -487,7 +529,7 @@ class BatchFeatureExtractor:
             save_dir: 保存目录，若不指定则不保存
             
         Returns:
-            特征提取结果列表
+            特征提取结果列表，包含原始特征、归一化特征（如启用）、选择后的特征（如启用）
         """
         n_samples = len(signal_list)
         
@@ -504,7 +546,9 @@ class BatchFeatureExtractor:
             ensure_dir(save_dir)
         
         results = []
+        feature_matrix = []
         
+        # 第一步：批量提取特征
         for i, signal in enumerate(signal_list):
             cut_id = cut_ids[i]
             
@@ -525,10 +569,7 @@ class BatchFeatureExtractor:
                     'wear_label': wear_labels[i]
                 }
                 results.append(result)
-                
-                # 保存单个特征文件
-                if save_dir is not None:
-                    self._save_feature(result, save_dir)
+                feature_matrix.append(feature_vector)
                 
                 self.logger.info(f"特征提取成功: {cut_id}", cut_id)
                 
@@ -536,13 +577,97 @@ class BatchFeatureExtractor:
                 self.logger.error(f"特征提取失败: {cut_id}", cut_id, exc=e)
                 continue
         
+        if len(feature_matrix) == 0:
+            self.logger.warn("没有有效特征数据")
+            return results
+        
+        # 转换为numpy数组
+        feature_matrix = np.array(feature_matrix)
+        
+        # 第二步：特征归一化（如启用）
+        if self.normalization_method is not None:
+            feature_matrix = self._normalize_features(feature_matrix)
+        
+        # 第三步：特征选择（如启用）
+        if self.feature_selector is not None:
+            # 提取磨损标签作为特征选择的目标
+            y = np.array([r['wear_label']['robust_wear'] for r in results])
+            feature_matrix = self._select_features(feature_matrix, y)
+        
+        # 更新结果中的特征向量
+        for i, result in enumerate(results):
+            result['feature_vector'] = feature_matrix[i]
+            
+            # 保存单个特征文件
+            if save_dir is not None:
+                self._save_feature(result, save_dir)
+        
         # 输出统计信息
         self.logger.stat(
             f"批量处理完成: 总数={n_samples}, 成功={len(results)}, "
-            f"失败={n_samples - len(results)}"
+            f"失败={n_samples - len(results)}, "
+            f"特征维度={feature_matrix.shape[1]}"
         )
         
         return results
+    
+    def _normalize_features(self, feature_matrix: np.ndarray) -> np.ndarray:
+        """对特征矩阵进行归一化
+        
+        Args:
+            feature_matrix: 特征矩阵，形状 (n_samples, n_features)
+            
+        Returns:
+            归一化后的特征矩阵
+        """
+        from sklearn.preprocessing import StandardScaler, MinMaxScaler
+        
+        if self.normalization_method == 'standard':
+            self.scaler = StandardScaler()
+        elif self.normalization_method == 'minmax':
+            self.scaler = MinMaxScaler()
+        else:
+            raise ValueError(f"未知的归一化方法: {self.normalization_method}")
+        
+        normalized_matrix = self.scaler.fit_transform(feature_matrix)
+        self.logger.info(f"特征归一化完成: 方法={self.normalization_method}, 特征维度={normalized_matrix.shape[1]}")
+        
+        return normalized_matrix
+    
+    def _select_features(self, feature_matrix: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """使用特征选择器进行特征选择
+        
+        Args:
+            feature_matrix: 特征矩阵，形状 (n_samples, n_features)
+            y: 目标变量（磨损标签）
+            
+        Returns:
+            选择后的特征矩阵
+        """
+        try:
+            # 尝试使用fit_transform方法
+            if hasattr(self.feature_selector, 'fit_transform'):
+                selected_matrix = self.feature_selector.fit_transform(feature_matrix, y)
+            elif hasattr(self.feature_selector, 'fit') and hasattr(self.feature_selector, 'transform'):
+                self.feature_selector.fit(feature_matrix, y)
+                selected_matrix = self.feature_selector.transform(feature_matrix)
+            else:
+                self.logger.warn("特征选择器不支持fit_transform或fit+transform方法")
+                return feature_matrix
+            
+            # 尝试获取选择的特征索引
+            if hasattr(self.feature_selector, 'get_support'):
+                self.selected_indices = np.where(self.feature_selector.get_support())[0]
+            elif hasattr(self.feature_selector, 'selected_indices'):
+                self.selected_indices = self.feature_selector.selected_indices
+            
+            self.logger.info(f"特征选择完成: 原始维度={feature_matrix.shape[1]}, 选择后维度={selected_matrix.shape[1]}")
+            
+            return selected_matrix
+        
+        except Exception as e:
+            self.logger.error(f"特征选择失败", exc=e)
+            return feature_matrix
     
     def _save_feature(self, result: Dict, save_dir: str):
         """保存单个特征到文件

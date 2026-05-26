@@ -4,13 +4,13 @@ from typing import Tuple, Optional
 
 class IDGenerator:
     """Generator and parser for cutting IDs in PHM2010 dataset."""
-    
+
     VALID_TOOL_IDS = ['c1', 'c4', 'c6']
-    
+
     # Pattern 1: c_1_001.csv -> (c1, 1)
     # Pattern 2: c_c1_1.csv -> (c1, 1)
-    PATTERN_1 = re.compile(r'^c_(\d)_\d{3}\.csv$')
-    PATTERN_2 = re.compile(r'^c_c(\d)_\d+\.csv$')
+    PATTERN_1 = re.compile(r'^c_(\d+)_(\d+)\.csv$')
+    PATTERN_2 = re.compile(r'^c_c(\d+)_(\d+)\.csv$')
     
     @classmethod
     def parse_filename(cls, filename: str) -> Tuple[str, int]:

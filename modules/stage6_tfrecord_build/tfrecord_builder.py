@@ -22,7 +22,7 @@ class TFRecordBuilder:
 
     TRAIN_TOOLS = ["c1", "c4"]
     TEST_TOOLS = ["c6"]
-    FEATURE_DIM = 168
+    FEATURE_DIM = 175
     WEAR_LABEL_DIM = 3
 
     def __init__(self, output_dir: str = None):

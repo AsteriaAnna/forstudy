@@ -152,10 +152,6 @@ class PipelineRunner:
                         "robust_wear": float(data["wear_label_robust_wear"]),
                         "wear_stage": str(data["wear_label_wear_stage"])
                     },
-                    "filter_params": {
-                        "mean": data["filter_mean"],
-                        "std": data["filter_std"]
-                    },
                     "status": str(data["status"])
                 }
 
@@ -448,12 +444,29 @@ def main():
     # 根据stage参数运行
     if is_all:
         # 运行完整流水线
+        runner = PipelineRunner(
+            run_id=run_id,
+            data_dir=args.data_dir,
+            resume=args.resume
+        )
         stats = runner.run_all_stages()
         runner.print_summary(stats)
     else:
-        print("注意: 非完整流水线模式可能需要手动管理依赖")
-        print("建议使用 --stage all 运行完整流程")
-        sys.exit(0)
+        print(f"执行指定阶段: {stages}")
+        runner = PipelineRunner(
+            run_id=run_id,
+            data_dir=args.data_dir,
+            resume=args.resume
+        )
+        
+        if 1 in stages or 2 in stages or 3 in stages:
+            preprocessed_data = runner.run_pipeline_stages_1_3()
+        if 4 in stages:
+            features_data = runner.run_stage4_feature_extraction(preprocessed_data)
+        if 5 in stages:
+            augmented_data = runner.run_stage5_augmentation(features_data)
+        if 6 in stages:
+            runner.run_stage6_tfrecord(augmented_data)
 
     print(f"\n运行完成! Run ID: {run_id}")
     print(f"结果保存在: {runner.output_dir}")

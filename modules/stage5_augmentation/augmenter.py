@@ -3,7 +3,6 @@
 该模块对Stage4提取的特征数据进行数据增强，包括:
 - 高斯噪声增强
 - 幅值缩放增强
-- 时间偏移增强
 - 滑动窗口切片
 - SMOTE风格类别平衡
 """
@@ -24,7 +23,6 @@ class DataAugmenter:
     # 默认增强参数
     DEFAULT_SIGMA_RANGE = (0.01, 0.05)
     DEFAULT_SCALE_RANGE = (0.9, 1.1)
-    DEFAULT_SHIFT_RANGE = (-50, 50)
     DEFAULT_WINDOW_SIZE = 1024
     DEFAULT_STEP = 512
 
@@ -80,26 +78,6 @@ class DataAugmenter:
         """
         scale = self.rng.uniform(scale_range[0], scale_range[1])
         return features * scale
-
-    def time_shift(
-        self,
-        features: np.ndarray,
-        shift_range: Tuple[int, int] = (-50, 50)
-    ) -> np.ndarray:
-        """时间偏移增强
-
-        对特征向量进行循环移位操作
-
-        Args:
-            features: 输入特征数组，形状 (N, 168)
-            shift_range: 偏移量范围
-
-        Returns:
-            偏移后的特征数组
-        """
-        shift = self.rng.integers(shift_range[0], shift_range[1] + 1)
-        augmented = np.roll(features, shift, axis=1)
-        return augmented
 
     def sliding_window(
         self,
@@ -200,7 +178,6 @@ class DataAugmenter:
         augmentation_methods = [
             lambda f: self.add_gaussian_noise(f, self.DEFAULT_SIGMA_RANGE),
             lambda f: self.amplitude_scaling(f, self.DEFAULT_SCALE_RANGE),
-            lambda f: self.time_shift(f, self.DEFAULT_SHIFT_RANGE),
         ]
 
         for i in range(n_augmentations):

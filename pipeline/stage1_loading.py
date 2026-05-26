@@ -11,6 +11,7 @@ from typing import Generator, Optional
 import numpy as np
 
 from core.logger import Logger
+from core.id_generator import IDGenerator
 
 
 class Stage1Loader:
@@ -18,10 +19,9 @@ class Stage1Loader:
 
     SUPPORTED_TOOL_IDS = ['c1', 'c4', 'c6']
 
-    # 文件名模式: c_1_001.csv -> tool_id=c1, cut_num=1
-    # 文件名模式: c_c1_1.csv -> tool_id=c1, cut_num=1
-    PATTERN_UNDERSCORE = re.compile(r'^c_(\d+)_(\d+)\.csv$')
-    PATTERN_PREFIX = re.compile(r'^c_c(\d+)_(\d+)\.csv$')
+    # 使用 IDGenerator 中的统一正则表达式
+    PATTERN_UNDERSCORE = IDGenerator.PATTERN_1
+    PATTERN_PREFIX = IDGenerator.PATTERN_2
 
     def __init__(self, raw_data_dir: str, logger: Optional[Logger] = None):
         """初始化Stage1加载器
@@ -205,21 +205,10 @@ class Stage1Loader:
         Returns:
             (tool_id, cut_num) 或 (None, None)
         """
-        # Pattern: c_1_001.csv -> tool_id=c1, cut_num=1
-        match = self.PATTERN_UNDERSCORE.match(filename)
-        if match:
-            tool_num = match.group(1)
-            cut_num = int(match.group(2))
-            return f'c{tool_num}', cut_num
-
-        # Pattern: c_c1_1.csv -> tool_id=c1, cut_num=1
-        match = self.PATTERN_PREFIX.match(filename)
-        if match:
-            tool_num = match.group(1)
-            cut_num = int(match.group(2))
-            return f'c{tool_num}', cut_num
-
-        return None, None
+        try:
+            return IDGenerator.parse_filename(filename)
+        except ValueError:
+            return None, None
 
     def scan_signal_files(self, tool_id: str) -> list[tuple[str, int]]:
         """扫描指定刀具的所有信号文件

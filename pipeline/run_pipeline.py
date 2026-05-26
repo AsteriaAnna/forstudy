@@ -1,10 +1,11 @@
-"""Pipeline集成模块: Stage1-3串行执行
+"""Pipeline集成模块: Stage1-4完整流程
 
-该模块整合Stage1Loader、Stage2Validator和Stage3Preprocessor，
-实现完整的从原始数据到预处理信号的pipeline流程。
+该模块整合Stage1Loader、Stage2Validator、Stage3Preprocessor和Stage4FeatureExtractor，
+实现完整的从原始数据到特征提取的pipeline流程。
 
 特性:
-- 流式处理（低内存占用）
+- Stage1-3流式处理（低内存占用）
+- Stage4批量处理（支持归一化和特征选择）
 - 断点续传支持
 - 错误处理与跳过
 - 进度跟踪
@@ -20,15 +21,19 @@ import numpy as np
 
 from core.logger import Logger
 from core.monitor import GlobalMonitor
+from core.utils import get_interim_dir
 from pipeline.stage1_loading import Stage1Loader
 from pipeline.stage2_validation import Stage2Validator
 from pipeline.stage3_preprocessing import Stage3Preprocessor
+from modules.stage4_feature_extract.feature_extractor import BatchFeatureExtractor
 
 
 class DataPipeline:
     """PHM2010数据处理Pipeline整合器
 
-    串行执行 Stage1Loader -> Stage2Validator -> Stage3Preprocessor，
+    执行流程:
+    - Stage1-3: 流式处理（低内存占用）
+    - Stage4: 批量处理（特征提取→归一化→特征选择）
     支持断点续传、流式处理和错误恢复。
     """
 
@@ -38,7 +43,9 @@ class DataPipeline:
         run_id: str,
         output_dir: str = "results",
         tool_ids: Optional[list[str]] = None,
-        resume: bool = True
+        resume: bool = True,
+        normalization_method: Optional[str] = None,
+        feature_selector=None
     ):
         """初始化Pipeline
 
@@ -48,12 +55,16 @@ class DataPipeline:
             output_dir: 输出根目录
             tool_ids: 要处理的刀具ID列表，None表示全部
             resume: 是否支持断点续传
+            normalization_method: 特征归一化方法，'standard'或'minmax'，None表示不进行归一化
+            feature_selector: 特征选择器实例（如CVOCA），None表示不进行特征选择
         """
         self.raw_data_dir = raw_data_dir
         self.run_id = run_id
         self.output_dir = Path(output_dir)
         self.tool_ids = tool_ids
         self.resume = resume
+        self.normalization_method = normalization_method
+        self.feature_selector = feature_selector
 
         # 创建运行目录
         self.run_dir = self.output_dir / run_id
@@ -61,8 +72,12 @@ class DataPipeline:
         self.log_dir = self.run_dir / "logs"
         self.checkpoint_file = self.run_dir / "checkpoint.json"
 
+        # 特征输出目录
+        self.features_dir = Path(get_interim_dir("features")) / run_id
+
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.features_dir.mkdir(parents=True, exist_ok=True)
 
         # 初始化Logger
         self.logger = Logger(run_id, log_dir=str(self.log_dir))
@@ -71,10 +86,16 @@ class DataPipeline:
         self.monitor = GlobalMonitor()
         self.monitor.reset()
 
-        # 初始化三个Stage
+        # 初始化四个Stage
         self.stage1 = Stage1Loader(raw_data_dir, self.logger)
         self.stage2 = Stage2Validator()
         self.stage3 = Stage3Preprocessor(run_id)
+        self.stage4 = BatchFeatureExtractor(
+            run_id, 
+            self.logger,
+            normalization_method=normalization_method,
+            feature_selector=feature_selector
+        )
 
         # 统计信息
         self.stats = {
@@ -85,7 +106,8 @@ class DataPipeline:
             'skipped_count': 0,
             'processing_time': 0.0,
             'start_time': None,
-            'end_time': None
+            'end_time': None,
+            'stage4_features_count': 0
         }
 
         # 加载checkpoint
@@ -163,10 +185,6 @@ class DataPipeline:
         output_path = self.data_dir / f"{cut_unique_id}.npz"
 
         try:
-            filter_params = preprocessed_data.get('filter_params', {})
-            filter_mean = filter_params.get('mean', np.array([]))
-            filter_std = filter_params.get('std', np.array([]))
-
             np.savez(
                 output_path,
                 processed_signal=preprocessed_data['processed_signal'],
@@ -176,8 +194,6 @@ class DataPipeline:
                 wear_label_flute_3=preprocessed_data['wear_label']['flute_3'],
                 wear_label_robust_wear=preprocessed_data['wear_label']['robust_wear'],
                 wear_label_wear_stage=preprocessed_data['wear_label']['wear_stage'],
-                filter_mean=filter_mean,
-                filter_std=filter_std,
                 status=preprocessed_data.get('status', 'PROCESSED')
             )
             return True
@@ -289,6 +305,9 @@ class DataPipeline:
         # 最终保存checkpoint
         self._save_checkpoint()
 
+        # Stage4: 批量特征处理（特征提取→归一化→特征选择）
+        self._run_stage4()
+
         self.stats['end_time'] = time.time()
         self.stats['processing_time'] = self.stats['end_time'] - self.stats['start_time']
 
@@ -296,6 +315,74 @@ class DataPipeline:
         self._print_final_stats()
 
         return self.stats
+
+    def _run_stage4(self):
+        """执行Stage4批量特征处理"""
+        self.logger.info(f"=" * 60)
+        self.logger.info(f"Stage4: 批量特征处理开始")
+        self.logger.info(f"=" * 60)
+
+        if self.stats['success_count'] == 0:
+            self.logger.warn("没有有效的预处理数据，跳过Stage4")
+            return
+
+        # 加载所有预处理数据
+        signal_list, cut_ids, tool_ids, wear_labels = self._load_preprocessed_data()
+
+        if len(signal_list) == 0:
+            self.logger.warn("未找到预处理数据文件")
+            return
+
+        self.logger.info(f"加载预处理数据完成: {len(signal_list)} 个样本")
+
+        # 执行批量特征处理
+        try:
+            results = self.stage4.process_batch(
+                signal_list=signal_list,
+                cut_ids=cut_ids,
+                tool_ids=tool_ids,
+                wear_labels=wear_labels,
+                save_dir=str(self.features_dir)
+            )
+            self.stats['stage4_features_count'] = len(results)
+            self.logger.info(f"Stage4处理完成: 成功提取 {len(results)} 个特征向量")
+        except Exception as e:
+            self.logger.error(f"Stage4处理失败", exc=e)
+
+    def _load_preprocessed_data(self):
+        """加载所有预处理数据"""
+        signal_list = []
+        cut_ids = []
+        tool_ids = []
+        wear_labels = []
+
+        for cut_unique_id in self.processed_ids:
+            file_path = self.data_dir / f"{cut_unique_id}.npz"
+            if not file_path.exists():
+                continue
+
+            try:
+                data = np.load(file_path, allow_pickle=True)
+                signal = data['processed_signal']
+                tool_id = str(data['tool_id'])
+                
+                # 重建磨损标签字典
+                wear_label = {
+                    'flute_1': float(data['wear_label_flute_1']),
+                    'flute_2': float(data['wear_label_flute_2']),
+                    'flute_3': float(data['wear_label_flute_3']),
+                    'robust_wear': float(data['wear_label_robust_wear']),
+                    'wear_stage': str(data['wear_label_wear_stage'])
+                }
+
+                signal_list.append(signal)
+                cut_ids.append(cut_unique_id)
+                tool_ids.append(tool_id)
+                wear_labels.append(wear_label)
+            except Exception as e:
+                self.logger.warn(f"加载预处理数据失败: {cut_unique_id}", exc=e)
+
+        return signal_list, cut_ids, tool_ids, wear_labels
 
     def _print_progress(self, current: int, total: int, skipped: int):
         """打印进度信息
@@ -327,6 +414,7 @@ class DataPipeline:
         self.logger.stat(f"成功处理: {self.stats['success_count']}")
         self.logger.stat(f"过滤数量: {self.stats['filtered_count']}")
         self.logger.stat(f"跳过数量: {self.stats['skipped_count']}")
+        self.logger.stat(f"提取特征数: {self.stats['stage4_features_count']}")
         self.logger.stat(f"处理时间: {self.stats['processing_time']:.2f}秒")
 
         if self.stats['filtered_by_type']:
@@ -342,6 +430,7 @@ class DataPipeline:
         self.logger.info(f"=" * 60)
         self.logger.info(f"输出目录: {self.run_dir}")
         self.logger.info(f"数据目录: {self.data_dir}")
+        self.logger.info(f"特征目录: {self.features_dir}")
         self.logger.info(f"日志目录: {self.log_dir}")
         self.logger.info(f"=" * 60)
 
@@ -397,6 +486,13 @@ def main():
         action='store_true',
         help='禁用断点续传，从头开始处理'
     )
+    parser.add_argument(
+        '--normalization',
+        type=str,
+        default=None,
+        choices=['standard', 'minmax'],
+        help='特征归一化方法: standard(Z-score) 或 minmax(0-1归一化)'
+    )
 
     args = parser.parse_args()
 
@@ -409,7 +505,8 @@ def main():
         run_id=run_id,
         output_dir=args.output_dir,
         tool_ids=args.tool_ids,
-        resume=not args.no_resume
+        resume=not args.no_resume,
+        normalization_method=args.normalization
     )
 
     stats = pipeline.run()
